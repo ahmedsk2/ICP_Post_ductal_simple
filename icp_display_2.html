@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ICP Monitor</title>
+<title>Patient Monitor — ICP / Post-ductal SpO₂</title>
 <script src="https://unpkg.com/mqtt@4.3.7/dist/mqtt.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;500;700&display=swap');
@@ -12,225 +12,260 @@
   body{
     background:#0a0a0a;
     display:flex;flex-direction:column;
-    align-items:center;justify-content:center;
+    align-items:center;justify-content:flex-start;
     min-height:100vh;
     font-family:'Share Tech Mono',monospace;
     overflow:hidden;
   }
 
-  /* Responsive wrapper: scales the monitor to viewport */
-  #monitorWrap{
-    transform-origin:top left;
-    width:860px;
-  }
+  /* Responsive wrapper: scales everything to viewport width */
+  #scaleWrap{transform-origin:top left;width:860px}
+  #stack{display:flex;flex-direction:column;gap:12px}
 
+  /* ── Top bar (always visible) ───────────────────────── */
+  #topbar{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+    width:860px;padding:10px 16px;margin-bottom:12px;
+    background:#0d1117;border:1px solid #30363d;border-radius:8px;
+  }
+  .tb-title{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:14px;letter-spacing:4px;color:#8b949e}
+  .tb-sub{font-family:'Rajdhani',sans-serif;font-size:10px;letter-spacing:2px;color:#3d4452}
+
+  /* Room chip — big, obvious, clickable */
+  .tb-room{
+    display:flex;align-items:center;gap:10px;cursor:pointer;
+    padding:6px 12px;border:1px solid #3b3160;border-radius:7px;
+    background:#140e26;transition:all .15s;
+  }
+  .tb-room:hover{border-color:#a855f7;background:#1c1238;box-shadow:0 0 14px rgba(168,85,247,.2)}
+  .tb-room-k{font-family:'Rajdhani',sans-serif;font-size:10px;font-weight:700;letter-spacing:3px;color:#6b21a8}
+  .tb-room-v{font-family:'Share Tech Mono',monospace;font-size:22px;font-weight:700;letter-spacing:4px;color:#c084fc;text-shadow:0 0 14px rgba(168,85,247,.5)}
+  .tb-room-edit{font-family:'Rajdhani',sans-serif;font-size:10px;font-weight:700;letter-spacing:2px;color:#a855f7aa;border:1px solid #a855f733;border-radius:4px;padding:2px 6px}
+  .tb-room:hover .tb-room-edit{color:#c084fc;border-color:#a855f7}
+
+  .tb-right{display:flex;align-items:center;gap:10px}
+  .tb-live{font-family:'Rajdhani',sans-serif;font-size:10px;letter-spacing:2px;color:#3d4452}
+  .tb-dot{width:8px;height:8px;border-radius:50%;background:#22c55e;box-shadow:0 0 6px #22c55e;animation:blink 1.6s step-end infinite}
+  .tb-dot.off{background:#4b5563;box-shadow:none;animation:none}
+  .tb-gear{
+    background:none;border:1px solid #30363d;border-radius:6px;color:#6b7280;
+    font-size:14px;padding:4px 9px;cursor:pointer;transition:all .2s;
+  }
+  .tb-gear:hover{border-color:#a855f7;color:#a855f7}
+  @keyframes blink{50%{opacity:.25}}
+
+  /* ── Monitor shell ──────────────────────────────────── */
+  .mon-wrap{width:860px}
   .monitor{
-    width:860px;
-    background:#050505;
-    border:1px solid #6b7280;
-    border-radius:6px;
-    box-shadow:0 0 0 1px #374151;
-    overflow:hidden;
+    width:860px;background:#050505;border:1px solid #6b7280;border-radius:6px;
+    box-shadow:0 0 0 1px #374151;overflow:hidden;
   }
+  .monitor.cyan{border-color:#0e7490;box-shadow:0 0 0 1px #155e75}
 
-  /* Header */
   .hdr{
     display:flex;justify-content:space-between;align-items:center;
-    padding:9px 16px 8px;
-    border-bottom:1px solid #374151;
-    background:#0a0a0a;
-    gap:10px;
+    padding:9px 16px 8px;border-bottom:1px solid #374151;background:#0a0a0a;gap:10px;
   }
-  .h-left{display:flex;align-items:center;gap:10px;flex-shrink:0}
+  .h-left{display:flex;align-items:center;gap:12px;flex-shrink:0}
   .chan{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:13px;letter-spacing:4px;color:#6b7280}
+  .chan.cyan{color:#22d3ee}
 
-  /* Room ID badge — big and clear */
-  .room-badge{
-    font-family:'Rajdhani',sans-serif;font-size:11px;font-weight:700;
-    letter-spacing:2px;color:#374151;
-    padding:3px 9px;border:1px solid #2d3748;border-radius:3px;
-    white-space:nowrap;
+  .big-val{
+    font-family:'Rajdhani',sans-serif;font-size:38px;font-weight:700;letter-spacing:3px;
+    text-align:center;min-width:150px;line-height:1;transition:color .3s,text-shadow .3s;
+    color:#a855f7;text-shadow:0 0 20px rgba(168,85,247,.5);
   }
-
-  /* ICP number — centre, large */
-  .icp-val{
-    font-family:'Rajdhani',sans-serif;
-    font-size:38px;font-weight:700;
-    color:#a855f7;
-    text-shadow:0 0 20px rgba(168,85,247,.5);
-    letter-spacing:3px;
-    text-align:center;
-    min-width:150px;
-    line-height:1;
-    transition:color .3s,text-shadow .3s;
-  }
-  .icp-val .unit{
-    font-size:13px;font-weight:300;
-    color:#6b21a8;margin-left:4px;letter-spacing:1px;
-  }
-  .icp-val.alarming{animation:alrm .5s step-end infinite}
+  .big-val.cyan{color:#22d3ee;text-shadow:0 0 20px rgba(34,211,238,.5)}
+  .big-val .unit{font-size:13px;font-weight:300;color:#6b21a8;margin-left:4px;letter-spacing:1px}
+  .big-val.cyan .unit{color:#0e7490}
+  .big-val.alarming{animation:alrm .5s step-end infinite}
   @keyframes alrm{50%{opacity:.08}}
 
-  .icp-amp{
-    font-family:'Rajdhani',sans-serif;font-size:13px;
-    color:#7c3aed88;letter-spacing:1px;
-    display:none;text-align:center;
-  }
+  .sub-amp{font-family:'Rajdhani',sans-serif;font-size:13px;color:#7c3aed88;letter-spacing:1px;display:none;text-align:center}
 
-  .h-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
+  .h-right{display:flex;align-items:center;gap:10px;flex-shrink:0}
+  .pr-val{font-family:'Rajdhani',sans-serif;font-size:22px;font-weight:700;color:#34d399;letter-spacing:1px;line-height:1}
+  .pr-val .unit{font-size:10px;font-weight:300;color:#0f766e;margin-left:3px}
   .preset-badge{font-family:'Rajdhani',sans-serif;font-size:10px;letter-spacing:2px;color:#a855f755;text-transform:uppercase}
   .alarm-icon{font-size:16px;color:#ef4444;display:none;text-shadow:0 0 8px #ef4444}
   .alarm-icon.on{display:inline;animation:abl .5s step-end infinite}
   @keyframes abl{50%{opacity:0}}
-  .live-label{font-size:10px;color:#37415166;letter-spacing:2px;font-family:'Rajdhani',sans-serif}
-  .sdot{width:8px;height:8px;border-radius:50%;background:#4b5563;box-shadow:0 0 5px #4b5563;animation:blink 1s step-end infinite}
-  @keyframes blink{50%{opacity:0}}
+  .sdot{width:8px;height:8px;border-radius:50%;background:#4b5563;box-shadow:0 0 5px #4b5563;animation:blink2 1s step-end infinite}
+  @keyframes blink2{50%{opacity:0}}
 
-  /* Canvas */
+  /* Pulse-amplitude bar (SpO₂) */
+  .pbar-wrap{width:8px;height:30px;border:1px solid #155e75;border-radius:2px;display:flex;align-items:flex-end;overflow:hidden;background:#06141a}
+  .pbar{width:100%;background:#22d3ee;box-shadow:0 0 6px #22d3ee;height:4px;transition:height .08s linear}
+
   .canvas-wrap{position:relative;background:#000;line-height:0}
   canvas{display:block}
 
-  /* Footer */
   .ftr{
     display:flex;justify-content:space-between;align-items:center;
-    padding:6px 16px;border-top:1px solid #374151;
-    background:#0a0a0a;height:34px;
+    padding:6px 16px;border-top:1px solid #374151;background:#0a0a0a;height:34px;
   }
   .f-left{display:flex;align-items:center;gap:14px}
   .legend{display:flex;gap:12px;align-items:center;opacity:0;transition:opacity .4s}
   .legend.on{opacity:1}
   .li{font-family:'Rajdhani',sans-serif;font-size:11px;display:flex;align-items:center;gap:5px;color:#6b7280}
   .ld{width:6px;height:6px;border-radius:50%}
-  .ld1{background:#c084fc;box-shadow:0 0 4px #c084fc}
-  .ld2{background:#a855f7;box-shadow:0 0 4px #a855f7}
-  .ld3{background:#7c3aed;box-shadow:0 0 4px #7c3aed}
+  .ld1{background:#d8b4fe;box-shadow:0 0 4px #d8b4fe}
+  .ld2{background:#c084fc;box-shadow:0 0 4px #c084fc}
+  .ld3{background:#a78bfa;box-shadow:0 0 4px #a78bfa}
   .smsg{font-family:'Rajdhani',sans-serif;font-size:10px;letter-spacing:2px;opacity:0;transition:opacity .3s;color:#ef444499}
   .smsg.on{opacity:1}
-
-  .f-right{display:flex;align-items:center;gap:8px}
+  .f-right{display:flex;align-items:center;gap:10px}
   .flabel{font-family:'Rajdhani',sans-serif;font-size:10px;letter-spacing:1px;color:#37415166}
-  .icon-btn{
-    background:none;border:1px solid #1f2937;border-radius:4px;
-    color:#374151;font-family:'Rajdhani',sans-serif;
-    font-size:10px;letter-spacing:2px;padding:3px 8px;
-    cursor:pointer;transition:all .2s;text-transform:uppercase;
-  }
-  .icon-btn:hover{border-color:#6b7280;color:#9ca3af}
-  .icon-btn.on{border-color:#7c3aed55;color:#a855f788}
+  .flabel.cyan{color:#0e749088}
 
-  /* Credit line */
+  .empty-msg{
+    width:860px;padding:48px 16px;text-align:center;
+    font-family:'Rajdhani',sans-serif;font-size:16px;letter-spacing:1px;color:#475569;
+    border:1px dashed #30363d;border-radius:8px;display:none;
+  }
+  .empty-msg.on{display:block}
+
+  /* Credit */
   .credit{
     font-family:'Rajdhani',sans-serif;font-size:11px;letter-spacing:1px;
-    color:#475569;text-align:center;padding:10px 4px 2px;line-height:1.4;
+    color:#475569;text-align:center;padding:6px 4px 2px;line-height:1.4;
   }
   .credit b{color:#a855f7aa;font-weight:700}
 
-  /* Settings overlay */
-  #sOverlay{
-    position:fixed;inset:0;z-index:200;
-    display:flex;align-items:center;justify-content:center;
-    opacity:0;pointer-events:none;transition:opacity .2s;
-  }
+  /* ── Settings / Room overlay ────────────────────────── */
+  #sOverlay{position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .2s}
   #sOverlay.open{opacity:1;pointer-events:all}
   .ov-bg{position:absolute;inset:0;background:rgba(0,0,0,.85);backdrop-filter:blur(4px)}
-  .ov-box{
-    position:relative;background:#0f172a;border:1px solid #334155;
-    border-radius:10px;padding:24px 26px 22px;width:360px;
-    display:flex;flex-direction:column;gap:16px;
-    box-shadow:0 0 60px rgba(0,0,0,.9);
-  }
+  .ov-box{position:relative;background:#0f172a;border:1px solid #334155;border-radius:10px;padding:24px 26px 22px;width:380px;max-width:calc(100vw - 24px);display:flex;flex-direction:column;gap:16px;box-shadow:0 0 60px rgba(0,0,0,.9)}
   .ov-title{font-family:'Rajdhani',sans-serif;font-size:10px;letter-spacing:5px;color:#475569;text-transform:uppercase}
   .ov-close{position:absolute;top:14px;right:16px;font-size:18px;color:#475569;cursor:pointer;background:none;border:none;transition:color .2s}
   .ov-close:hover{color:#e2e8f0}
   .ov-sec{display:flex;flex-direction:column;gap:8px}
-  .ov-lbl{font-family:'Rajdhani',sans-serif;font-size:9px;letter-spacing:3px;color:#334155;text-transform:uppercase}
+  .ov-lbl{font-family:'Rajdhani',sans-serif;font-size:9px;letter-spacing:3px;color:#475569;text-transform:uppercase}
   .ov-div{border:none;border-top:1px solid #1e293b}
 
-  /* Room ID display in overlay */
-  .room-id-display{
-    font-family:'Share Tech Mono',monospace;font-size:28px;font-weight:700;
-    color:#a855f7;text-shadow:0 0 16px rgba(168,85,247,.5);
-    text-align:center;letter-spacing:6px;padding:8px 0;
-    background:#0a0010;border:1px solid #3b0764;border-radius:6px;
+  /* Editable room field */
+  .room-edit-row{display:flex;gap:8px;align-items:stretch}
+  .room-input{
+    flex:1;min-width:0;padding:10px 12px;font-family:'Share Tech Mono',monospace;font-size:24px;font-weight:700;
+    background:#0a0010;border:1px solid #3b0764;border-radius:6px;color:#c084fc;
+    text-align:center;outline:none;letter-spacing:6px;text-transform:uppercase;
+    text-shadow:0 0 14px rgba(168,85,247,.5);
   }
-  .room-id-hint{font-family:'Rajdhani',sans-serif;font-size:10px;color:#334155;text-align:center;letter-spacing:1px}
-  .room-regen{
-    padding:8px;font-family:'Rajdhani',sans-serif;font-size:11px;letter-spacing:2px;
-    background:#0a0a0a;border:1px solid #334155;border-radius:5px;
-    color:#475569;cursor:pointer;transition:all .2s;text-transform:uppercase;
+  .room-input:focus{border-color:#a855f7;box-shadow:0 0 0 2px rgba(168,85,247,.18)}
+  .room-apply{
+    padding:0 16px;font-family:'Rajdhani',sans-serif;font-size:12px;font-weight:700;letter-spacing:2px;
+    background:#2e1065;border:1px solid #7c3aed;border-radius:6px;color:#c084fc;cursor:pointer;transition:all .2s;text-transform:uppercase;
   }
+  .room-apply:hover{background:#3b1280;box-shadow:0 0 14px rgba(168,85,247,.25)}
+  .room-id-hint{font-family:'Rajdhani',sans-serif;font-size:10px;color:#475569;letter-spacing:1px}
+  .room-regen{padding:8px;font-family:'Rajdhani',sans-serif;font-size:11px;letter-spacing:2px;background:#0a0a0a;border:1px solid #334155;border-radius:5px;color:#64748b;cursor:pointer;transition:all .2s;text-transform:uppercase}
   .room-regen:hover{border-color:#6b7280;color:#94a3b8}
 
-  /* Sweep buttons in overlay */
-  .ov-grid{display:grid;gap:5px}
-  .ov-grid.g4{grid-template-columns:1fr 1fr 1fr 1fr}
-  .obtn{
-    padding:8px 4px;font-family:'Rajdhani',sans-serif;font-size:11px;font-weight:500;
-    background:#0a0a0a;border:1px solid #1e293b;border-radius:5px;
-    color:#475569;cursor:pointer;transition:all .2s;text-align:center;line-height:1.3;
-  }
+  .ov-grid{display:grid;gap:5px;grid-template-columns:1fr 1fr 1fr 1fr}
+  .obtn{padding:8px 4px;font-family:'Rajdhani',sans-serif;font-size:11px;font-weight:500;background:#0a0a0a;border:1px solid #1e293b;border-radius:5px;color:#475569;cursor:pointer;transition:all .2s;text-align:center;line-height:1.3}
   .obtn:hover{border-color:#475569;color:#94a3b8}
   .obtn.act{background:#2e1065;border-color:#7c3aed;color:#c084fc}
 
-  /* Zero button */
-  .zero-btn{
-    width:100%;padding:10px;font-family:'Rajdhani',sans-serif;font-size:12px;letter-spacing:3px;
-    background:#0a0a0a;border:1px solid #334155;border-radius:6px;color:#64748b;
-    cursor:pointer;transition:all .2s;text-transform:uppercase;
-  }
+  .zero-btn{width:100%;padding:10px;font-family:'Rajdhani',sans-serif;font-size:12px;letter-spacing:3px;background:#0a0a0a;border:1px solid #334155;border-radius:6px;color:#64748b;cursor:pointer;transition:all .2s;text-transform:uppercase}
   .zero-btn:hover{border-color:#a855f7;color:#a855f7}
   .zero-btn.processing{opacity:.35;pointer-events:none}
 </style>
 </head>
 <body>
 
-<div id="monitorWrap">
-<div class="monitor">
+<div id="scaleWrap">
 
-  <div class="hdr">
-    <div class="h-left">
-      <div class="chan">ICP — CH1</div>
-      <div class="room-badge" id="roomBadge">···</div>
+  <!-- Top bar -->
+  <div id="topbar">
+    <div>
+      <div class="tb-title">PATIENT MONITOR</div>
+      <div class="tb-sub">ICP · POST-DUCTAL SpO₂</div>
     </div>
-    <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
-      <div class="icp-val" id="icpDisplay">12<span class="unit">mmHg</span></div>
-      <div class="icp-amp" id="ampDisplay"></div>
+    <div class="tb-room" id="roomChip" title="Click to change the Room ID">
+      <span class="tb-room-k">ROOM</span>
+      <span class="tb-room-v" id="roomIdTop">······</span>
+      <span class="tb-room-edit">✎ EDIT</span>
     </div>
-    <div class="h-right">
-      <div class="preset-badge" id="presetBadge"></div>
-      <div class="alarm-icon" id="alarmIcon">⚠</div>
-      <div class="live-label">LIVE</div>
-      <div class="sdot"></div>
+    <div class="tb-right">
+      <span class="tb-dot off" id="tbDot"></span>
+      <span class="tb-live" id="tbLive">OFFLINE</span>
+      <button class="tb-gear" id="settingsBtn">⚙</button>
     </div>
   </div>
 
-  <div class="canvas-wrap">
-    <canvas id="icpCanvas" width="860" height="240"></canvas>
-  </div>
+  <div id="stack">
 
-  <div class="ftr">
-    <div class="f-left">
-      <div class="legend" id="legend">
-        <div class="li"><div class="ld ld1"></div>P1</div>
-        <div class="li"><div class="ld ld2"></div>P2</div>
-        <div class="li"><div class="ld ld3"></div>P3</div>
+    <!-- ICP MONITOR -->
+    <div class="mon-wrap" id="icpWrap">
+      <div class="monitor">
+        <div class="hdr">
+          <div class="h-left"><div class="chan">ICP — CH1</div></div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+            <div class="big-val" id="icpDisplay">12<span class="unit">mmHg</span></div>
+            <div class="sub-amp" id="ampDisplay"></div>
+          </div>
+          <div class="h-right">
+            <div class="preset-badge" id="presetBadge"></div>
+            <div class="alarm-icon" id="alarmIcon">⚠</div>
+            <div class="sdot"></div>
+          </div>
+        </div>
+        <div class="canvas-wrap"><canvas id="icpCanvas" width="860" height="240"></canvas></div>
+        <div class="ftr">
+          <div class="f-left">
+            <div class="legend" id="legend">
+              <div class="li"><div class="ld ld1"></div>P1</div>
+              <div class="li"><div class="ld ld2"></div>P2</div>
+              <div class="li"><div class="ld ld3"></div>P3</div>
+            </div>
+            <div class="smsg" id="statusMsg"></div>
+          </div>
+          <div class="f-right">
+            <div class="flabel" id="sweepLabel">25 mm/s</div>
+            <div class="flabel" id="scaleLabel">0–20 mmHg</div>
+          </div>
+        </div>
       </div>
-      <div class="smsg" id="statusMsg"></div>
     </div>
-    <div class="f-right">
-      <div class="flabel" id="sweepLabel">25 mm/s</div>
-      <div class="flabel" id="scaleLabel">0–20 mmHg</div>
-      <button class="icon-btn" id="settingsBtn">⚙ SETTINGS</button>
+
+    <!-- POST-DUCTAL SpO₂ MONITOR -->
+    <div class="mon-wrap" id="spo2Wrap">
+      <div class="monitor cyan">
+        <div class="hdr">
+          <div class="h-left">
+            <div class="chan cyan">SpO₂ — POST-DUCTAL</div>
+            <div class="pbar-wrap"><div class="pbar" id="pulseBar"></div></div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+            <div class="big-val cyan" id="spo2Display">95<span class="unit">%</span></div>
+          </div>
+          <div class="h-right">
+            <div class="pr-val" id="prDisplay">120<span class="unit">bpm</span></div>
+            <div class="alarm-icon" id="spo2AlarmIcon">⚠</div>
+            <div class="sdot" style="background:#22d3ee;box-shadow:0 0 5px #22d3ee"></div>
+          </div>
+        </div>
+        <div class="canvas-wrap"><canvas id="spo2Canvas" width="860" height="240"></canvas></div>
+        <div class="ftr">
+          <div class="f-left"><div class="smsg" id="spo2Status"></div></div>
+          <div class="f-right">
+            <div class="flabel cyan" id="piLabel">PI 2.4%</div>
+            <div class="flabel cyan" id="spo2SweepLabel">25 mm/s</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="empty-msg" id="emptyMsg">No monitors enabled — turn on ICP or SpO₂ from the controller page.</div>
+
+    <div class="credit">
+      Created by <b>Ahmed Al Khalifah</b> · Neurocritical Care Fellow · SickKids
     </div>
   </div>
-</div><!-- .monitor -->
+</div>
 
-  <div class="credit">
-    Created by <b>Ahmed Al Khalifah</b> · Neurocritical Care Fellow · SickKids
-  </div>
-</div><!-- #monitorWrap -->
-
-<!-- Settings overlay -->
+<!-- Settings / Room overlay -->
 <div id="sOverlay">
   <div class="ov-bg" id="ovBg"></div>
   <div class="ov-box">
@@ -238,17 +273,20 @@
     <button class="ov-close" id="ovClose">✕</button>
 
     <div class="ov-sec">
-      <div class="ov-lbl">Room ID — share this with the controller</div>
-      <div class="room-id-display" id="ovRoomId">······</div>
-      <div class="room-id-hint">Enter this ID on the controller page</div>
-      <button class="room-regen" id="regenBtn">↺ Generate New ID</button>
+      <div class="ov-lbl">Room ID — type any 6 characters, then enter the same code on the controller</div>
+      <div class="room-edit-row">
+        <input class="room-input" id="roomInput" type="text" maxlength="6" placeholder="XXXXXX" autocomplete="off" autocapitalize="characters" spellcheck="false">
+        <button class="room-apply" id="roomApply">Set</button>
+      </div>
+      <div class="room-id-hint" id="roomHint">Share this ID with the controller to pair them.</div>
+      <button class="room-regen" id="regenBtn">↺ Generate Random ID</button>
     </div>
 
     <hr class="ov-div">
 
     <div class="ov-sec">
-      <div class="ov-lbl">Sweep Speed</div>
-      <div class="ov-grid g4" id="sweepGroup">
+      <div class="ov-lbl">Sweep Speed (both monitors)</div>
+      <div class="ov-grid" id="sweepGroup">
         <button class="obtn" data-i="0">6.25<br><span style="font-size:9px;opacity:.6">mm/s</span></button>
         <button class="obtn" data-i="1">12.5<br><span style="font-size:9px;opacity:.6">mm/s</span></button>
         <button class="obtn act" data-i="2">25<br><span style="font-size:9px;opacity:.6">mm/s</span></button>
@@ -267,41 +305,24 @@
 
 <script>
 // ═══════════════════════════════════════════════════════
-//  CONSTANTS
+//  SHARED CONSTANTS / HELPERS
 // ═══════════════════════════════════════════════════════
-const TOPIC_BASE = 'icpm-X9-'; // prefix + roomId
-const W=860, H=240, TP=10, BP=22, LP=46, RP=8;
-const UW=W-LP-RP, UH=H-TP-BP;   // plot area: 806×208
-const RESOLUTION = 500;
-const ERASE_W = 26;  // must cover max glow radius (lw=20 → 10px each side)
-const MAX_CYCLE_VAL = 14.0; // peak value in wave shape definition
+const TOPIC_BASE='icpm-X9-';
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 
-// Fixed cardiac + respiratory cycle widths (px)
-const CYCLE_PX = 146;  // pulse cycle width
-const RESP_PX  = 275;  // respiratory cycle width
-
-// Sweep: pixels/second  (808px ≈ 8.6s at 25mm/s for typical screen)
-const SWEEP_OPT = [
+const SWEEP_OPT=[
   {label:'6.25 mm/s', pps:14.5},
   {label:'12.5 mm/s', pps:28.9},
   {label:'25 mm/s',   pps:57.7},
   {label:'50 mm/s',   pps:115.4},
 ];
+let sweepIdx=2; // shared by both monitors
 
-// ═══════════════════════════════════════════════════════
-//  WAVE SHAPES  (normalised 0–14 relative amplitude)
-//  Peaks land at t≈.13 (P1), .30 (P2), .50 (P3)
-// ═══════════════════════════════════════════════════════
-const WAVE_PTS = {
-  // Normal compliance: P1 > P2 > P3 (descending percussion → tidal → dicrotic)
-  normal: [[0,0],[.05,2],[.13,14],[.20,7],[.30,11],[.40,5],[.50,8],[.62,2],[.75,.5],[.85,.3],[1,0]],
-  // Poor compliance: P2 ≥ P1 — tidal wave elevated, rounded "pyramidal" shape
-  poor:   [[0,0],[.05,2],[.13,9],[.20,7.5],[.30,13],[.40,9],[.50,11],[.60,5],[.72,2],[.85,.5],[1,0]],
-};
-function buildCycle(pts){
-  const a=new Float32Array(RESOLUTION+1);
-  for(let i=0;i<=RESOLUTION;i++){
-    const t=i/RESOLUTION;
+// Smoothstep-interpolated cycle table
+function buildCycleN(pts,res){
+  const a=new Float32Array(res+1);
+  for(let i=0;i<=res;i++){
+    const t=i/res;
     for(let j=0;j<pts.length-1;j++){
       const[t0,v0]=pts[j],[t1,v1]=pts[j+1];
       if(t>=t0&&t<=t1){const u=(t-t0)/(t1-t0),s=u*u*(3-2*u);a[i]=v0+(v1-v0)*s;break;}
@@ -309,536 +330,475 @@ function buildCycle(pts){
   }
   return a;
 }
-const CYCLES={normal:buildCycle(WAVE_PTS.normal),poor:buildCycle(WAVE_PTS.poor)};
-
-const PEAK_LABELS=[
-  {t:.13,text:'P1',color:'#c084fccc'},
-  {t:.30,text:'P2',color:'#a855f7cc'},
-  {t:.50,text:'P3',color:'#7c3aedcc'},
-];
-
-const PRESET_NAMES={normal:'Normal',poor:'Poor Compliance'};
+function roundRectPath(c,x,y,w,h,r){
+  c.beginPath();c.moveTo(x+r,y);
+  c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);
+  c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath();
+}
 
 // ═══════════════════════════════════════════════════════
-//  REMOTE STATE  (from controller via MQTT)
+//  SHARED REMOTE STATE  (from controller via MQTT)
 // ═══════════════════════════════════════════════════════
 let state = {
-  icpValue:12, scale:20, zeroTrigger:0,
-  preset:'normal',
-  evdClosed:false, catheter:'normal',
-  respMod:false,
+  // shared
+  scale:20, zeroTrigger:0, showAnnot:false, sweepSpeedIdx:2,
+  showICP:true, showSpo2:true,
+  // ICP
+  icpValue:12, preset:'normal', evdClosed:false, catheter:'normal', respMod:false,
   alarmThreshold:20, alarmSilenced:false,
-  showAnnot:false,
-  sweepSpeedIdx:2,
+  // SpO₂
+  spo2:95, pulseRate:120, perfusion:'normal', spo2Alarm:90, spo2Silenced:false,
 };
 
 // ═══════════════════════════════════════════════════════
-//  LOCAL DISPLAY STATE
+//  ICP MONITOR
 // ═══════════════════════════════════════════════════════
-let sweepIdx     = 2;       // 25mm/s
-let roomId = '';
+const ICP=(function(){
+  const canvas=document.getElementById('icpCanvas');
+  const ctx=canvas.getContext('2d');
+  ctx.imageSmoothingEnabled=false;
 
-// Sweep animation
-let sweepX = 0, bufOffset = 0, prevY = null, speedAccum = 0;
-let lastFrameTs = null;
-let prevCursorX = null;
+  const W=860,H=240,TP=10,BP=22,LP=46,RP=8;
+  const UW=W-LP-RP, UH=H-TP-BP;
+  const RES=500, ERASE_W=26, MAX_CYCLE_VAL=14.0;
+  const CYCLE_PX=146, RESP_PX=275;
 
-// Physics
-let dampFactor=1.0;
-let lastScale=20, needsRedraw=true;
+  const WAVE_PTS={
+    normal:[[0,0],[.05,2],[.13,14],[.20,7],[.30,11],[.40,5],[.50,8],[.62,2],[.75,.5],[.85,.3],[1,0]],
+    poor:  [[0,0],[.05,2],[.13,9],[.20,7.5],[.30,13],[.40,9],[.50,11],[.60,5],[.72,2],[.85,.5],[1,0]],
+  };
+  const CYCLES={normal:buildCycleN(WAVE_PTS.normal,RES),poor:buildCycleN(WAVE_PTS.poor,RES)};
+  const PEAK_LABELS=[
+    {t:.13,text:'P1',color:'#d8b4fe'},
+    {t:.30,text:'P2',color:'#c084fc'},
+    {t:.50,text:'P3',color:'#a78bfa'},
+  ];
+  const PEAK_PX=PEAK_LABELS.map(l=>Math.round(l.t*CYCLE_PX));
+  const PRESET_NAMES={normal:'Normal',poor:'Poor Compliance'};
 
-// Zeroing (cosmetic)
-let zeroingPhase=false, zeroingStart=0;
-let zeroedFlash=false, zeroedStart=0;
-let lastZeroTrig=null;
+  // local animation state
+  let sweepX=0,bufOffset=0,prevY=null,speedAccum=0,prevCursorX=null,needsRedraw=true;
+  let dampFactor=1.0,lastScale=20,lastDf=1;
+  let zeroingPhase=false,zeroingStart=0,zeroedFlash=false,zeroedStart=0,lastZeroTrig=null;
 
-let lastDOMUpd=0;
+  // DOM
+  const icpDisp=document.getElementById('icpDisplay');
+  const ampDisp=document.getElementById('ampDisplay');
+  const alarmIcon=document.getElementById('alarmIcon');
+  const legendEl=document.getElementById('legend');
+  const statusMsg=document.getElementById('statusMsg');
+  const scaleLbl=document.getElementById('scaleLabel');
+  const sweepLbl=document.getElementById('sweepLabel');
+  const presetBdg=document.getElementById('presetBadge');
+
+  const mmhgToY=p=>H-BP-(Math.max(0,p)/state.scale)*UH;
+  const getCycleKey=()=>state.preset==='poor'?'poor':'normal';
+  function sampleWave(buf){const cp=((buf%CYCLE_PX)+CYCLE_PX)%CYCLE_PX;const idx=Math.min(Math.round(cp/CYCLE_PX*RES),RES);return CYCLES[getCycleKey()][idx];}
+  function getPulseAmplitude(){const base=Math.max(1.5,state.icpValue*0.22);const compF=state.preset==='poor'?1.45:1.0;return base*compF;}
+  const getEffectiveICP=()=>Math.max(-5,state.icpValue);
+  function updateDamp(){let target=1;if(state.catheter==='partial')target=0.35;if(state.catheter==='full'||state.catheter==='disconnected')target=0.03;if(state.evdClosed)target=0;dampFactor+=(target-dampFactor)*0.04;return dampFactor;}
+
+  function drawYAxis(){
+    ctx.fillStyle='#000';ctx.fillRect(0,0,LP,H);
+    const ticks=[0,state.scale*.25,state.scale*.5,state.scale*.75,state.scale];
+    ctx.font='12px "Share Tech Mono"';ctx.textAlign='right';
+    for(const tick of ticks){
+      const y=mmhgToY(tick);if(y<TP-1||y>H-BP+1)continue;
+      ctx.strokeStyle='rgba(107,114,128,0.5)';ctx.lineWidth=0;ctx.setLineDash([]);
+      ctx.beginPath();ctx.moveTo(LP-5,y);ctx.lineTo(LP,y);ctx.stroke();
+      ctx.fillStyle='rgba(180,190,200,0.70)';ctx.fillText(Math.round(tick),LP-8,y+4);
+    }
+    ctx.textAlign='right';ctx.fillStyle='rgba(107,114,128,0.28)';ctx.fillText(`0–${state.scale}`,W-RP-3,TP+12);
+  }
+  function drawGridZone(x1,x2){
+    ctx.save();const gPx=40;ctx.lineWidth=1;ctx.setLineDash([]);
+    for(let gx=Math.ceil(x1/gPx)*gPx;gx<=x2;gx+=gPx){
+      if(gx<LP||gx>W-RP)continue;ctx.strokeStyle='rgba(107,114,128,0.42)';
+      ctx.beginPath();ctx.moveTo(gx,TP);ctx.lineTo(gx,H-BP);ctx.stroke();
+    }
+    const ticks=[0,state.scale*.25,state.scale*.5,state.scale*.75,state.scale];
+    for(const tick of ticks){
+      const gy=mmhgToY(tick);if(gy<TP||gy>H-BP)continue;
+      const isMajor=(tick===0||tick===state.scale);
+      ctx.strokeStyle='rgba(107,114,128,0.42)';ctx.setLineDash(isMajor?[]:[4,7]);ctx.lineWidth=1;
+      ctx.beginPath();ctx.moveTo(x1,gy);ctx.lineTo(x2,gy);ctx.stroke();
+    }
+    ctx.setLineDash([]);ctx.restore();
+  }
+  function drawFullBg(){ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);drawGridZone(LP,W-RP);drawYAxis();needsRedraw=false;}
+
+  function glowSeg(x1,y1,x2,y2,r,g,b){
+    ctx.save();const ci=12;ctx.beginPath();ctx.rect(LP,TP+ci,UW,UH-ci*2);ctx.clip();
+    const passes=[{lw:20,a:.025},{lw:12,a:.07},{lw:6,a:.18},{lw:3,a:.50},{lw:1.5,a:1.0}];
+    ctx.lineCap='round';ctx.lineJoin='round';
+    for(const {lw,a} of passes){ctx.strokeStyle=`rgba(${r},${g},${b},${a})`;ctx.lineWidth=lw;ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();}
+    ctx.restore();
+  }
+
+  function drawLabelAt(absX,y,lbl){
+    const chipH=16,gap=12;
+    let cy=y-gap-chipH;if(cy<TP+3)cy=TP+3;
+    const textY=cy+chipH-4;
+    ctx.save();ctx.beginPath();ctx.rect(LP,TP,UW,UH);ctx.clip();
+    ctx.fillStyle=lbl.color;ctx.beginPath();ctx.arc(absX,y,2.8,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle=lbl.color;ctx.lineWidth=1;ctx.setLineDash([2,3]);
+    ctx.beginPath();ctx.moveTo(absX,y-4);ctx.lineTo(absX,cy+chipH);ctx.stroke();ctx.setLineDash([]);
+    ctx.font='700 12px "Rajdhani",sans-serif';ctx.textAlign='center';ctx.textBaseline='alphabetic';
+    const w=ctx.measureText(lbl.text).width;
+    const cx=Math.min(Math.max(absX,LP+w/2+7),W-RP-w/2-7);
+    roundRectPath(ctx,cx-w/2-6,cy,w+12,chipH,4);
+    ctx.fillStyle='rgba(0,0,0,0.82)';ctx.fill();
+    ctx.strokeStyle=lbl.color;ctx.lineWidth=1;ctx.stroke();
+    ctx.fillStyle=lbl.color;ctx.fillText(lbl.text,cx,textY);
+    ctx.restore();
+  }
+
+  function step(dt){
+    if(zeroingPhase&&(Date.now()-zeroingStart)/1000>4){zeroingPhase=false;zeroedFlash=true;zeroedStart=Date.now();}
+    if(state.scale!==lastScale){lastScale=state.scale;needsRedraw=true;}
+    if(needsRedraw){drawFullBg();sweepX=0;bufOffset=0;prevY=null;speedAccum=0;prevCursorX=null;}
+
+    const eICP=getEffectiveICP();
+    const df=updateDamp();lastDf=df;
+    const isDisconn=state.catheter==='disconnected';
+    const pps=SWEEP_OPT[sweepIdx].pps;
+    speedAccum+=pps*dt;const steps=Math.floor(speedAccum);speedAccum-=steps;
+    const pulseAmp=getPulseAmplitude();
+
+    for(let i=0;i<steps;i++){
+      const absX=LP+sweepX;
+      const ahead=(sweepX+2)%UW,aAbsX=LP+ahead,aEnd=Math.min(aAbsX+ERASE_W,W-RP);
+      if(aEnd>aAbsX){ctx.fillStyle='#000';ctx.fillRect(aAbsX,TP,aEnd-aAbsX,UH);drawGridZone(aAbsX,aEnd);}
+      if(ahead+ERASE_W>UW){const wr=LP+((ahead+ERASE_W)%UW);if(wr>LP+2){ctx.fillStyle='#000';ctx.fillRect(LP,TP,wr-LP,UH);drawGridZone(LP,wr);}}
+
+      let y;
+      if(zeroingPhase||isDisconn){y=Math.max(TP+1,Math.min(H-BP-1,mmhgToY(0)));}
+      else{
+        const rawSample=sampleWave(bufOffset);
+        const wAmp=(rawSample/MAX_CYCLE_VAL)*pulseAmp*df;
+        const respActive=state.respMod&&!state.evdClosed&&df>0.1;
+        const rAmp=respActive?1.2*Math.sin(2*Math.PI*bufOffset/RESP_PX):0;
+        y=Math.max(TP+1,Math.min(H-BP-1,mmhgToY(eICP+wAmp+rAmp)));
+      }
+
+      const flat=df<0.06;
+      const goRed=state.showAnnot&&flat&&!isDisconn&&!zeroingPhase;
+      const[r,g,b]=isDisconn?[107,114,128]:zeroingPhase?[148,103,234]:goRed?[255,68,68]:[168,85,247];
+      if(prevY!==null&&sweepX>0)glowSeg(absX-1,prevY,absX,y,r,g,b);
+
+      if(state.showAnnot&&!isDisconn&&!zeroingPhase&&df>0.15){
+        const cyc=bufOffset%CYCLE_PX;
+        for(let k=0;k<PEAK_LABELS.length;k++){if(cyc===PEAK_PX[k])drawLabelAt(absX,y,PEAK_LABELS[k]);}
+      }
+      if(state.showAnnot&&!zeroingPhase&&df<0.06&&!isDisconn&&sweepX===Math.floor(UW/2)){
+        const msg=state.evdClosed?'EVD VALVE CLOSED — NO PULSATILE WAVEFORM':state.catheter==='full'?'CATHETER FULLY OBSTRUCTED':'';
+        if(msg){ctx.save();ctx.font='700 11px "Rajdhani",monospace';ctx.textAlign='center';ctx.fillStyle='rgba(239,68,68,0.5)';ctx.fillText(msg,LP+UW/2,mmhgToY(eICP)-18);ctx.restore();}
+      }
+      if(isDisconn&&state.showAnnot&&sweepX===Math.floor(UW/2)){ctx.save();ctx.font='700 11px "Rajdhani",monospace';ctx.textAlign='center';ctx.fillStyle='rgba(107,114,128,0.45)';ctx.fillText('NO SIGNAL — TRANSDUCER DISCONNECTED',LP+UW/2,mmhgToY(0)-18);ctx.restore();}
+      if(zeroingPhase&&sweepX===Math.floor(UW/2)){ctx.save();ctx.font='700 11px "Rajdhani",monospace';ctx.textAlign='center';ctx.fillStyle='rgba(148,103,234,0.55)';ctx.fillText('ZEROING TRANSDUCER — REFERENCING TO ATMOSPHERE',LP+UW/2,mmhgToY(0)-18);ctx.restore();}
+
+      prevY=y;bufOffset++;sweepX++;
+      if(sweepX>=UW){sweepX=0;prevY=null;prevCursorX=null;}
+    }
+
+    if(steps>0){
+      const cx=LP+sweepX;
+      if(prevCursorX!==null){const ex=Math.max(LP,prevCursorX-2),ew=Math.min(5,W-RP-ex);ctx.fillStyle='#000';ctx.fillRect(ex,TP,ew,UH);drawGridZone(ex,ex+ew);}
+      ctx.save();ctx.beginPath();ctx.rect(LP,TP,UW,UH);ctx.clip();
+      ctx.strokeStyle='rgba(255,255,255,0.95)';ctx.lineWidth=1;ctx.setLineDash([]);
+      ctx.beginPath();ctx.moveTo(cx,TP);ctx.lineTo(cx,H-BP);ctx.stroke();ctx.restore();
+      prevCursorX=cx;
+    }
+    drawYAxis();
+  }
+
+  function updateDOM(){
+    const eICP=getEffectiveICP(),df=lastDf;
+    const isDisconn=state.catheter==='disconnected';
+    if(isDisconn){
+      icpDisp.innerHTML='---<span class="unit">mmHg</span>';icpDisp.style.color='#4b5563';icpDisp.style.textShadow='none';icpDisp.classList.remove('alarming');
+    }else if(zeroingPhase){
+      icpDisp.innerHTML='0<span class="unit">mmHg</span>';icpDisp.style.color='#6b7280';icpDisp.style.textShadow='none';icpDisp.classList.remove('alarming');
+    }else{
+      const v=Math.round(eICP*10)/10;icpDisp.innerHTML=`${v}<span class="unit">mmHg</span>`;
+      const alm=eICP>state.alarmThreshold&&!state.alarmSilenced&&state.showAnnot;
+      if(state.showAnnot){const c=eICP<=15?'#a855f7':eICP<=25?'#fbbf24':'#ef4444';icpDisp.style.color=c;icpDisp.style.textShadow=`0 0 20px ${c}88`;}
+      else{icpDisp.style.color='#a855f7';icpDisp.style.textShadow='0 0 20px rgba(168,85,247,.5)';}
+      icpDisp.classList.toggle('alarming',!!alm);alarmIcon.classList.toggle('on',!!alm);
+    }
+    const pa=getPulseAmplitude()*df;
+    ampDisp.textContent=(!isDisconn&&!zeroingPhase)?`Amp: ${Math.round(pa)} mmHg`:'';
+    ampDisp.style.display=(state.showAnnot&&!isDisconn&&!zeroingPhase)?'block':'none';
+    legendEl.classList.toggle('on',state.showAnnot);
+    scaleLbl.textContent=`0–${state.scale} mmHg`;
+    sweepLbl.textContent=SWEEP_OPT[sweepIdx].label;
+    presetBdg.textContent=state.showAnnot?(PRESET_NAMES[state.preset]||''):'';
+    let sm='',sv=false,sc='rgba(239,68,68,0.7)';
+    if(zeroingPhase){sm='ZEROING ICP…';sv=true;sc='rgba(168,85,247,0.7)';}
+    else if(zeroedFlash&&Date.now()-zeroedStart<2000){sm='ZEROED ✓';sv=true;sc='rgba(168,85,247,0.5)';}
+    else if(state.showAnnot&&!isDisconn){
+      if(eICP>state.alarmThreshold&&!state.alarmSilenced){sm=`⚠ ICP > ${state.alarmThreshold} mmHg`;sv=true;}
+      else if(state.catheter==='partial'){sm='DAMPED — PARTIAL OBSTRUCTION';sv=true;sc='rgba(251,191,36,0.7)';}
+      else if((state.evdClosed||state.catheter==='full')&&df<0.06){sm='NO PULSATILE WAVEFORM';sv=true;}
+    }
+    statusMsg.textContent=sm;statusMsg.style.color=sc;statusMsg.classList.toggle('on',sv);
+  }
+
+  return{
+    step,updateDOM,
+    markRedraw(){needsRedraw=true;},
+    triggerZero(){if(zeroingPhase)return false;zeroingPhase=true;zeroingStart=Date.now();return true;},
+    maybeZero(v){if(lastZeroTrig===null){lastZeroTrig=v||0;}else if((v||0)>lastZeroTrig&&!zeroingPhase){lastZeroTrig=v;zeroingPhase=true;zeroingStart=Date.now();}},
+    isZeroing(){return zeroingPhase;},
+  };
+})();
+
+// ═══════════════════════════════════════════════════════
+//  POST-DUCTAL SpO₂ MONITOR
+// ═══════════════════════════════════════════════════════
+const SpO2=(function(){
+  const canvas=document.getElementById('spo2Canvas');
+  const ctx=canvas.getContext('2d');
+  ctx.imageSmoothingEnabled=false;
+
+  const W=860,H=240,TP=10,BP=18,LP=14,RP=10;
+  const UW=W-LP-RP, UH=H-TP-BP;
+  const RES=400, ERASE_W=26, BEAT_SLOWDOWN=5.5;
+  const BASE_Y=H-BP-4, SPAN=UH-24;
+
+  // Plethysmograph: steep upstroke, dicrotic notch, diastolic runoff (0..1)
+  const PLETH_PTS=[[0,.10],[.07,.18],[.15,.92],[.20,1.0],[.27,.74],[.34,.48],[.39,.45],[.43,.57],[.49,.49],[.60,.30],[.74,.18],[.88,.12],[1,.10]];
+  const PLETH=buildCycleN(PLETH_PTS,RES);
+
+  let sweepX=0,buf=0,prevY=null,acc=0,prevCur=null,needsRedraw=true;
+  let ampSmooth=1.0,curAmp=0;
+
+  const pulseBar=document.getElementById('pulseBar');
+  const spo2Disp=document.getElementById('spo2Display');
+  const prDisp=document.getElementById('prDisplay');
+  const piLabel=document.getElementById('piLabel');
+  const sweepLbl=document.getElementById('spo2SweepLabel');
+  const statusMsg=document.getElementById('spo2Status');
+  const alarmIcon=document.getElementById('spo2AlarmIcon');
+
+  function cyclePx(){const pps=SWEEP_OPT[sweepIdx].pps;const bpm=clamp(state.pulseRate||120,30,240);return clamp(pps*60/bpm*BEAT_SLOWDOWN,24,560);}
+  function targetAmp(){if(state.perfusion==='none')return 0;if(state.perfusion==='low')return 0.22;return 1.0;}
+  function plethVal(b,cp){const p=((b%cp)+cp)%cp;const idx=Math.min(Math.round(p/cp*RES),RES);return PLETH[idx];}
+
+  function drawGrid(x1,x2){
+    ctx.save();const gPx=40;ctx.lineWidth=1;ctx.setLineDash([]);
+    for(let gx=Math.ceil(x1/gPx)*gPx;gx<=x2;gx+=gPx){if(gx<LP||gx>W-RP)continue;ctx.strokeStyle='rgba(14,116,144,0.30)';ctx.beginPath();ctx.moveTo(gx,TP);ctx.lineTo(gx,H-BP);ctx.stroke();}
+    ctx.strokeStyle='rgba(14,116,144,0.30)';ctx.setLineDash([4,7]);
+    for(const fy of [0.33,0.66]){const gy=TP+UH*fy;ctx.beginPath();ctx.moveTo(x1,gy);ctx.lineTo(x2,gy);ctx.stroke();}
+    ctx.setLineDash([]);ctx.restore();
+  }
+  function drawBg(){ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);drawGrid(LP,W-RP);needsRedraw=false;}
+
+  function glow(x1,y1,x2,y2,r,g,b){
+    ctx.save();const ci=8;ctx.beginPath();ctx.rect(LP,TP+ci,UW,UH-ci*2);ctx.clip();
+    const passes=[{lw:18,a:.03},{lw:10,a:.08},{lw:5,a:.20},{lw:2.6,a:.55},{lw:1.4,a:1.0}];
+    ctx.lineCap='round';ctx.lineJoin='round';
+    for(const {lw,a} of passes){ctx.strokeStyle=`rgba(${r},${g},${b},${a})`;ctx.lineWidth=lw;ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();}
+    ctx.restore();
+  }
+
+  function step(dt){
+    if(needsRedraw){drawBg();sweepX=0;buf=0;prevY=null;acc=0;prevCur=null;}
+    const pps=SWEEP_OPT[sweepIdx].pps;acc+=pps*dt;const steps=Math.floor(acc);acc-=steps;
+    const cp=cyclePx();
+    ampSmooth+=(targetAmp()-ampSmooth)*0.05;
+    const noSig=state.perfusion==='none';
+    const lowSat=state.spo2<state.spo2Alarm&&!state.spo2Silenced;
+    const[r,g,b]=noSig?[100,116,139]:state.perfusion==='low'?[245,158,11]:lowSat?[244,63,94]:[34,211,238];
+
+    for(let i=0;i<steps;i++){
+      const absX=LP+sweepX;
+      const ahead=(sweepX+2)%UW,aAbsX=LP+ahead,aEnd=Math.min(aAbsX+ERASE_W,W-RP);
+      if(aEnd>aAbsX){ctx.fillStyle='#000';ctx.fillRect(aAbsX,TP,aEnd-aAbsX,UH);drawGrid(aAbsX,aEnd);}
+      if(ahead+ERASE_W>UW){const wr=LP+((ahead+ERASE_W)%UW);if(wr>LP+2){ctx.fillStyle='#000';ctx.fillRect(LP,TP,wr-LP,UH);drawGrid(LP,wr);}}
+
+      let val,y;
+      if(noSig){val=0;y=BASE_Y-(0.02*Math.sin(buf*0.06))*SPAN;}
+      else{
+        const resp=1+0.06*Math.sin(2*Math.PI*buf/(cp*6));
+        val=plethVal(buf,cp);
+        y=BASE_Y-val*ampSmooth*resp*SPAN;
+      }
+      y=clamp(y,TP+1,H-BP-1);
+      curAmp=noSig?0:val*ampSmooth;
+      if(prevY!==null&&sweepX>0)glow(absX-1,prevY,absX,y,r,g,b);
+
+      if(noSig&&sweepX===Math.floor(UW/2)){ctx.save();ctx.font='700 11px "Rajdhani",monospace';ctx.textAlign='center';ctx.fillStyle='rgba(100,116,139,0.5)';ctx.fillText('SEARCHING FOR PULSE — CHECK PROBE',LP+UW/2,BASE_Y-26);ctx.restore();}
+      if(state.perfusion==='low'&&state.showAnnot&&sweepX===Math.floor(UW/2)){ctx.save();ctx.font='700 11px "Rajdhani",monospace';ctx.textAlign='center';ctx.fillStyle='rgba(245,158,11,0.5)';ctx.fillText('LOW PERFUSION',LP+UW/2,BASE_Y-90);ctx.restore();}
+
+      prevY=y;buf++;sweepX++;
+      if(sweepX>=UW){sweepX=0;prevY=null;prevCur=null;}
+    }
+
+    if(steps>0){
+      const cx=LP+sweepX;
+      if(prevCur!==null){const ex=Math.max(LP,prevCur-2),ew=Math.min(5,W-RP-ex);ctx.fillStyle='#000';ctx.fillRect(ex,TP,ew,UH);drawGrid(ex,ex+ew);}
+      ctx.save();ctx.beginPath();ctx.rect(LP,TP,UW,UH);ctx.clip();
+      ctx.strokeStyle='rgba(255,255,255,0.9)';ctx.lineWidth=1;ctx.setLineDash([]);
+      ctx.beginPath();ctx.moveTo(cx,TP);ctx.lineTo(cx,H-BP);ctx.stroke();ctx.restore();
+      prevCur=cx;
+    }
+  }
+
+  function updateDOM(){
+    const noSig=state.perfusion==='none';
+    const lowSat=state.spo2<state.spo2Alarm&&!state.spo2Silenced;
+    if(noSig){
+      spo2Disp.innerHTML='--<span class="unit">%</span>';spo2Disp.style.color='#475569';spo2Disp.style.textShadow='none';spo2Disp.classList.remove('alarming');
+      prDisp.innerHTML='--<span class="unit">bpm</span>';prDisp.style.color='#475569';
+      alarmIcon.classList.remove('on');
+    }else{
+      spo2Disp.innerHTML=`${state.spo2}<span class="unit">%</span>`;
+      const c=lowSat?'#f43f5e':state.spo2<92?'#fbbf24':'#22d3ee';
+      spo2Disp.style.color=c;spo2Disp.style.textShadow=`0 0 20px ${c}88`;
+      spo2Disp.classList.toggle('alarming',!!lowSat);
+      prDisp.innerHTML=`${state.pulseRate}<span class="unit">bpm</span>`;prDisp.style.color='#34d399';
+      alarmIcon.classList.toggle('on',!!lowSat);
+    }
+    // Perfusion index readout
+    let pi='--';
+    if(!noSig)pi=(state.perfusion==='low'?0.25:2.4).toFixed(1);
+    piLabel.textContent=`PI ${pi}${noSig?'':'%'}`;
+    sweepLbl.textContent=SWEEP_OPT[sweepIdx].label;
+    // Status line
+    let sm='',sv=false,sc='rgba(244,63,94,0.7)';
+    if(noSig){sm='SEARCHING FOR PULSE';sv=true;sc='rgba(100,116,139,0.7)';}
+    else if(lowSat){sm=`⚠ SpO₂ < ${state.spo2Alarm}%`;sv=true;}
+    else if(state.perfusion==='low'){sm='LOW PERFUSION — INTERPRET WITH CAUTION';sv=true;sc='rgba(245,158,11,0.7)';}
+    statusMsg.textContent=sm;statusMsg.style.color=sc;statusMsg.classList.toggle('on',sv);
+    // Pulse-amplitude bar
+    pulseBar.style.height=(4+18*clamp(curAmp,0,1)).toFixed(0)+'px';
+    pulseBar.style.background=noSig?'#475569':state.perfusion==='low'?'#f59e0b':'#22d3ee';
+    pulseBar.style.boxShadow=noSig?'none':`0 0 6px ${state.perfusion==='low'?'#f59e0b':'#22d3ee'}`;
+  }
+
+  return{step,updateDOM,markRedraw(){needsRedraw=true;}};
+})();
 
 // ═══════════════════════════════════════════════════════
 //  ROOM ID
 // ═══════════════════════════════════════════════════════
-function genId(){
-  const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  return Array.from({length:6},()=>c[Math.floor(Math.random()*c.length)]).join('');
-}
-function loadRoomId(){
-  let id=localStorage.getItem('icpDisplayRoomId')||'';
-  if(!id||id.length!==6){id=genId();localStorage.setItem('icpDisplayRoomId',id);}
-  return id;
-}
+let roomId='';
+function genId(){const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';return Array.from({length:6},()=>c[Math.floor(Math.random()*c.length)]).join('');}
+function loadRoomId(){let id=localStorage.getItem('icpDisplayRoomId')||'';if(!id||id.length!==6){id=genId();localStorage.setItem('icpDisplayRoomId',id);}return id;}
 function setRoomId(id){
-  roomId=id;
-  localStorage.setItem('icpDisplayRoomId',id);
-  document.getElementById('roomBadge').textContent=`ID: ${id}`;
-  document.getElementById('ovRoomId').textContent=id;
-}
-
-// ═══════════════════════════════════════════════════════
-//  PHYSICS HELPERS
-// ═══════════════════════════════════════════════════════
-// Y coordinate: 0mmHg → bottom (H-BP), scale mmHg → top (TP)
-function mmhgToY(p){
-  return H - BP - (Math.max(0, p) / state.scale) * UH;
-}
-
-function getCycleKey(){
-  return state.preset==='poor' ? 'poor' : 'normal';
-}
-
-function sampleWave(buf){
-  const cp=((buf%CYCLE_PX)+CYCLE_PX)%CYCLE_PX;
-  const idx=Math.min(Math.round(cp/CYCLE_PX*RESOLUTION),RESOLUTION);
-  return CYCLES[getCycleKey()][idx];
-}
-
-// Realistic pulse pressure: ~20–25% of mean ICP
-// (Clinically: ≈2–3 mmHg at ICP=10, ≈5 mmHg at ICP=20)
-function getPulseAmplitude(){
-  const base = Math.max(1.5, state.icpValue * 0.22);
-  const compF = (state.preset==='poor') ? 1.45 : 1.0;
-  return base * compF;
-}
-
-function getEffectiveICP(){
-  return Math.max(-5, state.icpValue);
-}
-
-function updateDamp(){
-  let target=1;
-  if(state.catheter==='partial') target=0.35;
-  if(state.catheter==='full'||state.catheter==='disconnected') target=0.03;
-  if(state.evdClosed) target=0;
-  dampFactor+=(target-dampFactor)*0.04;
-  return dampFactor;
-}
-
-// ═══════════════════════════════════════════════════════
-//  CANVAS / DRAWING
-// ═══════════════════════════════════════════════════════
-const canvas=document.getElementById('icpCanvas');
-const ctx=canvas.getContext('2d');
-// Disable anti-aliasing on shadow (we won't use shadow at all)
-ctx.imageSmoothingEnabled=false;
-
-// ── Y-axis ────────────────────────────────────────────
-function drawYAxis(){
-  // Black backing to cover any wave bleed into label zone
-  ctx.fillStyle='#000';
-  ctx.fillRect(0,0,LP,H);
-
-  const ticks=[0,state.scale*.25,state.scale*.5,state.scale*.75,state.scale];
-  ctx.font='12px "Share Tech Mono"';
-  ctx.textAlign='right';
-
-  for(const tick of ticks){
-    const y=mmhgToY(tick);
-    if(y<TP-1||y>H-BP+1)continue;
-    ctx.strokeStyle='rgba(107,114,128,0.5)';ctx.lineWidth=0;ctx.setLineDash([]);
-    ctx.beginPath();ctx.moveTo(LP-5,y);ctx.lineTo(LP,y);ctx.stroke();
-    ctx.fillStyle='rgba(180,190,200,0.70)';
-    ctx.fillText(Math.round(tick),LP-8,y+4);
-  }
-
-  // Scale label top-right
-  ctx.textAlign='right';
-  ctx.fillStyle='rgba(107,114,128,0.28)';
-  ctx.fillText(`0–${state.scale}`,W-RP-3,TP+12);
-}
-
-// ── Grid ──────────────────────────────────────────────
-function drawGridZone(x1,x2){
-  ctx.save();
-  const gPx=40;
-  // Verticals
-  ctx.lineWidth=1;ctx.setLineDash([]);
-  for(let gx=Math.ceil(x1/gPx)*gPx;gx<=x2;gx+=gPx){
-    if(gx<LP||gx>W-RP)continue;
-    ctx.strokeStyle='rgba(107,114,128,0.42)';
-    ctx.beginPath();ctx.moveTo(gx,TP);ctx.lineTo(gx,H-BP);ctx.stroke();
-  }
-  // Horizontals
-  const ticks=[0,state.scale*.25,state.scale*.5,state.scale*.75,state.scale];
-  for(const tick of ticks){
-    const gy=mmhgToY(tick);
-    if(gy<TP||gy>H-BP)continue;
-    const isMajor=(tick===0||tick===state.scale);
-    ctx.strokeStyle=isMajor?'rgba(107,114,128,0.42)':'rgba(107,114,128,0.42)';
-    ctx.setLineDash(isMajor?[]:[4,7]);ctx.lineWidth=1;
-    ctx.beginPath();ctx.moveTo(x1,gy);ctx.lineTo(x2,gy);ctx.stroke();
-  }
-  ctx.setLineDash([]);
-  ctx.restore();
-}
-
-function drawFullBg(){
-  ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);
-  drawGridZone(LP,W-RP);
-  drawYAxis();
-  needsRedraw=false;
-}
-
-// ── Glow segment — NO ctx.shadow, multi-pass only ────
-// This prevents ALL purple ghost artifacts
-function glowSeg(x1,y1,x2,y2,r,g,b){
-  ctx.save();
-  const clipInset = 12;
-  ctx.beginPath();
-  ctx.rect(LP, TP + clipInset, UW, UH - clipInset * 2);
-  ctx.clip();
-
-  const passes = [
-    {lw:20,a:.025},
-    {lw:12,a:.07},
-    {lw:6, a:.18},
-    {lw:3, a:.50},
-    {lw:1.5,a:1.0},
-  ];
-
-  ctx.lineCap='round';
-  ctx.lineJoin='round';
-
-  for(const {lw,a} of passes){
-    ctx.strokeStyle=`rgba(${r},${g},${b},${a})`;
-    ctx.lineWidth=lw;
-    ctx.beginPath();
-    ctx.moveTo(x1,y1);
-    ctx.lineTo(x2,y2);
-    ctx.stroke();
-  }
-  ctx.restore();
-}
-
-// ── Peak label ────────────────────────────────────────
-function drawLabelAt(absX,y,lbl){
-  const lY=Math.max(TP+16,y-22);
-  ctx.save();
-  ctx.beginPath();ctx.rect(LP,TP,UW,UH);ctx.clip();
-  // dot
-  ctx.fillStyle=lbl.color;
-  ctx.beginPath();ctx.arc(absX,y,2.5,0,Math.PI*2);ctx.fill();
-  // tick
-  ctx.strokeStyle=lbl.color;ctx.lineWidth=.7;ctx.setLineDash([2,3]);
-  ctx.beginPath();ctx.moveTo(absX,y-4);ctx.lineTo(absX,lY-2);ctx.stroke();
-  ctx.setLineDash([]);
-  // text
-  ctx.font='500 11px "Rajdhani",monospace';ctx.textAlign='center';
-  ctx.fillStyle=lbl.color;ctx.fillText(lbl.text,absX,lY);
-  ctx.restore();
-}
-
-// ═══════════════════════════════════════════════════════
-//  DOM UPDATE
-// ═══════════════════════════════════════════════════════
-const icpDisp   = document.getElementById('icpDisplay');
-const ampDisp   = document.getElementById('ampDisplay');
-const alarmIcon = document.getElementById('alarmIcon');
-const legendEl  = document.getElementById('legend');
-const statusMsg = document.getElementById('statusMsg');
-const scaleLbl  = document.getElementById('scaleLabel');
-const sweepLbl  = document.getElementById('sweepLabel');
-const presetBdg = document.getElementById('presetBadge');
-
-function updateDOM(eICP,df){
-  const isDisconn=state.catheter==='disconnected';
-
-  // ICP value display
-  if(isDisconn){
-    icpDisp.innerHTML='---<span class="unit">mmHg</span>';
-    icpDisp.style.color='#4b5563';icpDisp.style.textShadow='none';
-    icpDisp.classList.remove('alarming');
-  } else if(zeroingPhase){
-    icpDisp.innerHTML='0<span class="unit">mmHg</span>';
-    icpDisp.style.color='#6b7280';icpDisp.style.textShadow='none';
-    icpDisp.classList.remove('alarming');
-  } else {
-    const v=Math.round(eICP*10)/10;
-    icpDisp.innerHTML=`${v}<span class="unit">mmHg</span>`;
-    const alm=eICP>state.alarmThreshold&&!state.alarmSilenced&&state.showAnnot;
-    if(state.showAnnot){
-      const c=eICP<=15?'#a855f7':eICP<=25?'#fbbf24':'#ef4444';
-      icpDisp.style.color=c;icpDisp.style.textShadow=`0 0 20px ${c}88`;
-    } else {
-      icpDisp.style.color='#a855f7';icpDisp.style.textShadow='0 0 20px rgba(168,85,247,.5)';
-    }
-    icpDisp.classList.toggle('alarming',!!alm);
-    alarmIcon.classList.toggle('on',!!alm);
-  }
-
-  // Pulse amplitude
-  const pa=getPulseAmplitude()*df;
-  ampDisp.textContent=(!isDisconn&&!zeroingPhase)?`Amp: ${Math.round(pa)} mmHg`:'';
-  ampDisp.style.display=(state.showAnnot&&!isDisconn&&!zeroingPhase)?'block':'none';
-
-  // Labels
-  legendEl.classList.toggle('on',state.showAnnot);
-  scaleLbl.textContent=`0–${state.scale} mmHg`;
-  sweepLbl.textContent=SWEEP_OPT[sweepIdx].label;
-  presetBdg.textContent=state.showAnnot?(PRESET_NAMES[state.preset]||''):'';
-
-  // Status message
-  let sm='',sv=false,sc='rgba(239,68,68,0.7)';
-  if(zeroingPhase){sm='ZEROING ICP…';sv=true;sc='rgba(168,85,247,0.7)';}
-  else if(zeroedFlash&&Date.now()-zeroedStart<2000){sm='ZEROED ✓';sv=true;sc='rgba(168,85,247,0.5)';}
-  else if(state.showAnnot&&!isDisconn){
-    if(eICP>state.alarmThreshold&&!state.alarmSilenced){sm=`⚠ ICP > ${state.alarmThreshold} mmHg`;sv=true;}
-    else if(state.catheter==='partial'){sm='DAMPED — PARTIAL OBSTRUCTION';sv=true;sc='rgba(251,191,36,0.7)';}
-    else if((state.evdClosed||state.catheter==='full')&&df<0.06){sm='NO PULSATILE WAVEFORM';sv=true;}
-  }
-  statusMsg.textContent=sm;statusMsg.style.color=sc;statusMsg.classList.toggle('on',sv);
-
-  // Sweep speed from controller
-  if(state.sweepSpeedIdx!==undefined&&state.sweepSpeedIdx!==sweepIdx){
-    sweepIdx=state.sweepSpeedIdx;
-    // Update sweep button UI
-    document.getElementById('sweepGroup').querySelectorAll('.obtn').forEach(b=>{
-      b.classList.toggle('act',parseInt(b.dataset.i)===sweepIdx);
-    });
-    needsRedraw=true;
-  }
+  roomId=id;localStorage.setItem('icpDisplayRoomId',id);
+  document.getElementById('roomIdTop').textContent=id;
+  document.getElementById('roomInput').value=id;
 }
 
 // ═══════════════════════════════════════════════════════
 //  MQTT
 // ═══════════════════════════════════════════════════════
 let mqttTopic='';
-const client=mqtt.connect('wss://broker.hivemq.com:8884/mqtt',{
-  clientId:'icp-disp-'+Math.random().toString(16).slice(2,8),
-  clean:true,reconnectPeriod:2000,
-});
-client.on('connect',()=>{if(mqttTopic)client.subscribe(mqttTopic);});
+const tbDot=document.getElementById('tbDot'),tbLive=document.getElementById('tbLive');
+const client=mqtt.connect('wss://broker.hivemq.com:8884/mqtt',{clientId:'icp-disp-'+Math.random().toString(16).slice(2,8),clean:true,reconnectPeriod:2000});
+client.on('connect',()=>{tbDot.classList.remove('off');tbLive.textContent='LIVE';if(mqttTopic)client.subscribe(mqttTopic);});
+client.on('close',()=>{tbDot.classList.add('off');tbLive.textContent='OFFLINE';});
 client.on('message',(_,payload)=>{
   try{
     const msg=JSON.parse(payload.toString());
-    if(lastZeroTrig===null){lastZeroTrig=msg.zeroTrigger||0;}
-    else if((msg.zeroTrigger||0)>lastZeroTrig&&!zeroingPhase){
-      lastZeroTrig=msg.zeroTrigger;
-      zeroingPhase=true;zeroingStart=Date.now();
-    }
-    if(msg.scale&&msg.scale!==state.scale)needsRedraw=true;
+    ICP.maybeZero(msg.zeroTrigger);
+    if(msg.scale&&msg.scale!==state.scale)ICP.markRedraw();
     Object.assign(state,msg);
   }catch(e){}
 });
-function connectRoom(id){
-  const newT=TOPIC_BASE+id;
-  if(newT===mqttTopic)return;
-  if(mqttTopic&&client.connected)client.unsubscribe(mqttTopic);
-  mqttTopic=newT;
-  if(client.connected)client.subscribe(mqttTopic);
-}
+function connectRoom(id){const newT=TOPIC_BASE+id;if(newT===mqttTopic)return;if(mqttTopic&&client.connected)client.unsubscribe(mqttTopic);mqttTopic=newT;if(client.connected)client.subscribe(mqttTopic);}
 
 // ═══════════════════════════════════════════════════════
-//  SETTINGS OVERLAY
+//  OVERLAY / ROOM EDITING
 // ═══════════════════════════════════════════════════════
 const sOverlay=document.getElementById('sOverlay');
-document.getElementById('settingsBtn').addEventListener('click',()=>sOverlay.classList.add('open'));
-document.getElementById('ovClose').addEventListener('click',()=>sOverlay.classList.remove('open'));
-document.getElementById('ovBg').addEventListener('click',()=>sOverlay.classList.remove('open'));
+const roomInput=document.getElementById('roomInput');
+const roomHint=document.getElementById('roomHint');
+function openOverlay(focusRoom){sOverlay.classList.add('open');if(focusRoom){setTimeout(()=>{roomInput.focus();roomInput.select();},60);}}
+function closeOverlay(){sOverlay.classList.remove('open');}
+document.getElementById('settingsBtn').addEventListener('click',()=>openOverlay(false));
+document.getElementById('roomChip').addEventListener('click',()=>openOverlay(true));
+document.getElementById('ovClose').addEventListener('click',closeOverlay);
+document.getElementById('ovBg').addEventListener('click',closeOverlay);
 
-document.getElementById('regenBtn').addEventListener('click',()=>{
-  const newId=genId();
-  setRoomId(newId);
-  connectRoom(newId);
-});
+function applyRoomFromInput(){
+  const clean=(roomInput.value||'').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6);
+  if(clean.length!==6){roomHint.textContent='⚠ Room ID must be exactly 6 characters.';roomHint.style.color='#f87171';return;}
+  setRoomId(clean);connectRoom(clean);
+  roomHint.textContent='✓ Room set — enter this same ID on the controller.';roomHint.style.color='#22d3ee';
+}
+document.getElementById('roomApply').addEventListener('click',applyRoomFromInput);
+roomInput.addEventListener('keydown',e=>{if(e.key==='Enter')applyRoomFromInput();});
+roomInput.addEventListener('input',()=>{roomInput.value=roomInput.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6);roomHint.textContent='Share this ID with the controller to pair them.';roomHint.style.color='';});
+document.getElementById('regenBtn').addEventListener('click',()=>{const id=genId();setRoomId(id);connectRoom(id);roomHint.textContent='✓ New ID generated — enter it on the controller.';roomHint.style.color='#22d3ee';});
 
-// Sweep speed
+// Sweep speed (shared)
+function setSweepUI(){document.getElementById('sweepGroup').querySelectorAll('.obtn').forEach(b=>b.classList.toggle('act',parseInt(b.dataset.i)===sweepIdx));}
 document.getElementById('sweepGroup').querySelectorAll('.obtn').forEach(btn=>{
-  btn.addEventListener('click',()=>{
-    document.getElementById('sweepGroup').querySelectorAll('.obtn').forEach(b=>b.classList.remove('act'));
-    btn.classList.add('act');
-    sweepIdx=parseInt(btn.dataset.i);
-    needsRedraw=true;
-  });
+  btn.addEventListener('click',()=>{sweepIdx=parseInt(btn.dataset.i);setSweepUI();ICP.markRedraw();SpO2.markRedraw();});
 });
 
-// Zero button in overlay
+// Zero ICP
 const zeroBtnOv=document.getElementById('zeroBtnOv');
-zeroBtnOv.addEventListener('click',()=>{
-  if(zeroingPhase)return;
-  zeroingPhase=true;zeroingStart=Date.now();
-  zeroBtnOv.textContent='⊘  Zeroing…';zeroBtnOv.classList.add('processing');
-});
+zeroBtnOv.addEventListener('click',()=>{if(ICP.triggerZero()){zeroBtnOv.textContent='⊘  Zeroing…';zeroBtnOv.classList.add('processing');}});
 
 // ═══════════════════════════════════════════════════════
-//  RESPONSIVE SCALING
+//  VISIBILITY + RESPONSIVE SCALING
 // ═══════════════════════════════════════════════════════
-const monWrap=document.getElementById('monitorWrap');
+const scaleWrap=document.getElementById('scaleWrap');
+const icpWrap=document.getElementById('icpWrap');
+const spo2Wrap=document.getElementById('spo2Wrap');
+const emptyMsg=document.getElementById('emptyMsg');
+let prevShowICP=null,prevShowSpo2=null;
+
+function syncVisibility(){
+  if(state.showICP!==prevShowICP){
+    icpWrap.style.display=state.showICP?'block':'none';
+    if(state.showICP)ICP.markRedraw();
+    prevShowICP=state.showICP;applyScale();
+  }
+  if(state.showSpo2!==prevShowSpo2){
+    spo2Wrap.style.display=state.showSpo2?'block':'none';
+    if(state.showSpo2)SpO2.markRedraw();
+    prevShowSpo2=state.showSpo2;applyScale();
+  }
+  emptyMsg.classList.toggle('on',!state.showICP&&!state.showSpo2);
+}
 
 function applyScale(){
   const vw=window.innerWidth-16;
   const sc=Math.min(1,vw/860);
-  monWrap.style.transform=`scale(${sc})`;
-  monWrap.style.transformOrigin='top left';
-  // Compensate body height so it centres properly
-  const naturalH=monWrap.offsetHeight;
-  monWrap.style.marginBottom=((sc-1)*naturalH)+'px';
-  monWrap.style.width='860px';
-  document.body.style.minHeight=(naturalH*sc+32)+'px';
+  scaleWrap.style.transform=`scale(${sc})`;
+  const naturalH=scaleWrap.offsetHeight;
+  scaleWrap.style.marginBottom=((sc-1)*naturalH)+'px';
+  document.body.style.minHeight=(naturalH*sc+24)+'px';
 }
 window.addEventListener('resize',applyScale);
 
 // ═══════════════════════════════════════════════════════
-//  MAIN ANIMATION LOOP
+//  MAIN LOOP
 // ═══════════════════════════════════════════════════════
+let lastFrameTs=null,lastDOMUpd=0,wasZeroing=false;
 function frame(ts){
-  // Cap dt to avoid huge jumps on first frame or after tab switch
   if(lastFrameTs===null)lastFrameTs=ts;
-  const dt=Math.min((ts-lastFrameTs)/1000, 0.05);
-  lastFrameTs=ts;
+  const dt=Math.min((ts-lastFrameTs)/1000,0.05);lastFrameTs=ts;
 
-  // Zeroing phase: 4s cosmetic, then restore
-  if(zeroingPhase&&(Date.now()-zeroingStart)/1000>4){
-    zeroingPhase=false;zeroedFlash=true;zeroedStart=Date.now();
-    zeroBtnOv.textContent='⊘  Zero ICP';zeroBtnOv.classList.remove('processing');
-  }
+  // sweep speed from controller
+  if(state.sweepSpeedIdx!==undefined&&state.sweepSpeedIdx!==sweepIdx){sweepIdx=state.sweepSpeedIdx;setSweepUI();ICP.markRedraw();SpO2.markRedraw();}
 
-  // Scale change → full redraw
-  if(state.scale!==lastScale){lastScale=state.scale;needsRedraw=true;}
- if(needsRedraw){
-  drawFullBg();
-  sweepX = 0;
-  bufOffset = 0;
-  prevY = null;
-  speedAccum = 0;
-  prevCursorX = null;
-}
+  syncVisibility();
+  if(state.showICP)ICP.step(dt);
+  if(state.showSpo2)SpO2.step(dt);
 
-  const eICP=getEffectiveICP();
-  const df=updateDamp();
-  const isDisconn=state.catheter==='disconnected';
+  // reset overlay zero button when zeroing finishes
+  const z=ICP.isZeroing();
+  if(wasZeroing&&!z){zeroBtnOv.textContent='⊘  Zero ICP';zeroBtnOv.classList.remove('processing');}
+  wasZeroing=z;
 
-  // Pixels this frame
-  const pps=SWEEP_OPT[sweepIdx].pps;
-  speedAccum+=pps*dt;
-  const steps=Math.floor(speedAccum);
-  speedAccum-=steps;
-
-  // Pulse amplitude in mmHg (for this frame)
-  const pulseAmp=getPulseAmplitude();
-
-  for(let i=0;i<steps;i++){
-    const absX=LP+sweepX;
-
-    // ── Erase zone ahead of cursor ──────────────────
-    const ahead=(sweepX+2)%UW;
-    const aAbsX=LP+ahead;
-    const aEnd=Math.min(aAbsX+ERASE_W,W-RP);
-    if(aEnd>aAbsX){
-      ctx.fillStyle='#000';ctx.fillRect(aAbsX,TP,aEnd-aAbsX,UH);
-      drawGridZone(aAbsX,aEnd);
-    }
-    // Wrap-around erase
-    if(ahead+ERASE_W>UW){
-      const wr=LP+((ahead+ERASE_W)%UW);
-      if(wr>LP+2){ctx.fillStyle='#000';ctx.fillRect(LP,TP,wr-LP,UH);drawGridZone(LP,wr);}
-    }
-
-    // ── Compute waveform Y ──────────────────────────
-    let y;
-    if(zeroingPhase){
-      // Zeroing: flat line at 0 mmHg
-      y=Math.max(TP+1,Math.min(H-BP-1,mmhgToY(0)));
-    } else if(isDisconn){
-      y=Math.max(TP+1,Math.min(H-BP-1,mmhgToY(0)));
-    } else {
-      // wAmp in real mmHg: normalise cycle value (0–14) to real pulse pressure
-      const rawSample=sampleWave(bufOffset);
-      const wAmp=(rawSample/MAX_CYCLE_VAL)*pulseAmp*df;
-      // Respiratory modulation: suppressed when EVD closed or flat
-      const respActive=state.respMod&&!state.evdClosed&&df>0.1;
-      const rAmp=respActive?1.2*Math.sin(2*Math.PI*bufOffset/RESP_PX):0;
-      const totalICP=eICP+wAmp+rAmp;
-      y=Math.max(TP+1,Math.min(H-BP-1,mmhgToY(totalICP)));
-    }
-
-    // ── Draw segment ────────────────────────────────
-    const flat=df<0.06;
-    const goRed=state.showAnnot&&flat&&!isDisconn&&!zeroingPhase;
-    const [r,g,b]=isDisconn?[107,114,128]:
-                  zeroingPhase?[148,103,234]:
-                  goRed?[255,68,68]:[168,85,247];
-
-    if(prevY!==null&&sweepX>0){
-      glowSeg(absX-1,prevY,absX,y,r,g,b);
-    }
-
-    // ── Peak labels ────────────────────────────────
-    if(state.showAnnot&&!isDisconn&&!zeroingPhase&&df>0.15){
-      const frac=(bufOffset%CYCLE_PX)/CYCLE_PX;
-      for(const lbl of PEAK_LABELS){
-        if(Math.abs(frac-lbl.t)<1.5/CYCLE_PX)drawLabelAt(absX,y,lbl);
-      }
-    }
-
-    // ── Obstruction/zeroing annotations ────────────
-    if(state.showAnnot&&!zeroingPhase&&df<0.06&&!isDisconn&&sweepX===Math.floor(UW/2)){
-      const msg=state.evdClosed?'EVD VALVE CLOSED — NO PULSATILE WAVEFORM':
-                state.catheter==='full'?'CATHETER FULLY OBSTRUCTED':'';
-      if(msg){
-        ctx.save();ctx.font='700 11px "Rajdhani",monospace';ctx.textAlign='center';
-        ctx.fillStyle='rgba(239,68,68,0.5)';
-        ctx.fillText(msg,LP+UW/2,mmhgToY(eICP)-18);ctx.restore();
-      }
-    }
-    if(isDisconn&&state.showAnnot&&sweepX===Math.floor(UW/2)){
-      ctx.save();ctx.font='700 11px "Rajdhani",monospace';ctx.textAlign='center';
-      ctx.fillStyle='rgba(107,114,128,0.45)';
-      ctx.fillText('NO SIGNAL — TRANSDUCER DISCONNECTED',LP+UW/2,mmhgToY(0)-18);ctx.restore();
-    }
-    if(zeroingPhase&&sweepX===Math.floor(UW/2)){
-      ctx.save();ctx.font='700 11px "Rajdhani",monospace';ctx.textAlign='center';
-      ctx.fillStyle='rgba(148,103,234,0.55)';
-      ctx.fillText('ZEROING TRANSDUCER — REFERENCING TO ATMOSPHERE',LP+UW/2,mmhgToY(0)-18);ctx.restore();
-    }
-
-    prevY=y;
-    bufOffset++;
-    sweepX++;
-    if(sweepX >= UW){
-  sweepX = 0;
-  prevY = null;
-  prevCursorX = null;
-}
-  }
-
-  // ── Cursor scan line (moves with sweep) ──────────
-if (steps > 0) {
-  const cx = LP + sweepX;
-
-  // erase previous cursor
-  if (prevCursorX !== null) {
-    const eraseX = Math.max(LP, prevCursorX - 2);
-    const eraseW = Math.min(5, W - RP - eraseX);
-
-    ctx.fillStyle = '#000';
-    ctx.fillRect(eraseX, TP, eraseW, UH);
-    drawGridZone(eraseX, eraseX + eraseW);
-  }
-
-  // draw new cursor
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(LP, TP, UW, UH);
-  ctx.clip();
-
-  ctx.strokeStyle = 'rgba(255,255,255,0.95)';
-  ctx.lineWidth = 1;
-  ctx.setLineDash([]);
-  ctx.beginPath();
-  ctx.moveTo(cx, TP);
-  ctx.lineTo(cx, H - BP);
-  ctx.stroke();
-  ctx.restore();
-
-  prevCursorX = cx;
-}
-
-  // Redraw Y-axis on top to keep it clean
-  drawYAxis();
-
-  // DOM at ~12 fps
   const now=Date.now();
-  if(now-lastDOMUpd>80){updateDOM(eICP,df);lastDOMUpd=now;}
-
+  if(now-lastDOMUpd>80){if(state.showICP)ICP.updateDOM();if(state.showSpo2)SpO2.updateDOM();lastDOMUpd=now;}
   requestAnimationFrame(frame);
 }
 
@@ -848,6 +808,7 @@ if (steps > 0) {
 roomId=loadRoomId();
 setRoomId(roomId);
 connectRoom(roomId);
+setSweepUI();
 applyScale();
 requestAnimationFrame(frame);
 </script>
