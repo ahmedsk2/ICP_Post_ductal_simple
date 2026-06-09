@@ -19,6 +19,13 @@
   body{background:var(--bg);min-height:100vh;font-family:'Inter',sans-serif;color:var(--txt);overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:6px}
   #ctrlWrap{transform-origin:top center;width:820px;display:flex;flex-direction:column;gap:8px}
 
+  /* Phone mode: full-size, single column, scrollable */
+  body.phone{overflow-y:auto;overflow-x:hidden;height:auto;padding:8px 8px 28px}
+  body.phone #ctrlWrap{width:100%!important;max-width:460px;transform:none!important;margin-bottom:0!important}
+  body.phone .topbar{flex-wrap:wrap}
+  body.phone .tb-l{flex:1}
+  body.phone .tb-entry{flex-basis:100%;order:5}
+
   /* Top bar */
   .topbar{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--s1);border:1px solid var(--bd);border-radius:8px}
   .tb-l{display:flex;flex-direction:column;gap:2px;flex-shrink:0}
@@ -276,14 +283,24 @@ function setupGroup(id,key,colorFn,isNum){$(id).querySelectorAll('.gbtn').forEac
 // ── Visibility pills + layout/fit ──
 const ctrlWrap=$('ctrlWrap'),cols=$('cols'),colIcp=$('colIcp'),colSpo2=$('colSpo2'),noMon=$('noMon');
 const pillIcp=$('pillIcp'),pillSpo2=$('pillSpo2'),pillAnnot=$('pillAnnot');
+const PHONE_MAX=720; // below this width: phone mode (stacked + scrollable)
 function layout(){
   const both=state.showICP&&state.showSpo2, any=state.showICP||state.showSpo2;
   colIcp.style.display=state.showICP?'':'none';
   colSpo2.style.display=state.showSpo2?'':'none';
   noMon.style.display=any?'none':'block';
-  cols.style.gridTemplateColumns=both?'1fr 1fr':'1fr';
-  ctrlWrap.style.width=(both?820:430)+'px';
-  fit();
+  if(window.innerWidth<PHONE_MAX){
+    // Phone: one column, full size, page scrolls
+    document.body.classList.add('phone');
+    cols.style.gridTemplateColumns='1fr';
+    ctrlWrap.style.width='';ctrlWrap.style.transform='none';ctrlWrap.style.marginBottom='0';
+  }else{
+    // Desktop / monitor: side-by-side, scaled to fit without scrolling
+    document.body.classList.remove('phone');
+    cols.style.gridTemplateColumns=both?'1fr 1fr':'1fr';
+    ctrlWrap.style.width=(both?820:430)+'px';
+    fit();
+  }
 }
 function fit(){
   const w=parseInt(ctrlWrap.style.width)||820;
@@ -291,7 +308,7 @@ function fit(){
   ctrlWrap.style.transform=`scale(${sc})`;
   ctrlWrap.style.marginBottom=((sc-1)*ctrlWrap.offsetHeight)+'px';
 }
-window.addEventListener('resize',fit);
+window.addEventListener('resize',layout);
 window.addEventListener('load',layout);
 pillIcp.addEventListener('click',()=>{state.showICP=!state.showICP;pillIcp.classList.toggle('act',state.showICP);layout();publish();});
 pillSpo2.addEventListener('click',()=>{state.showSpo2=!state.showSpo2;pillSpo2.classList.toggle('act-pink',state.showSpo2);layout();publish();});
