@@ -302,14 +302,16 @@ const ICP=(function(){
   function drawFullBg(){ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);drawGridZone(LP,W-RP);drawYAxis();needsRedraw=false;}
   const GLOW_PASSES=[{lw:20,a:.025},{lw:12,a:.07},{lw:6,a:.18},{lw:3,a:.50},{lw:1.5,a:1.0}];
   function glowSeg(x1,y1,x2,y2,r,g,b){ctx.save();const ci=12;ctx.beginPath();ctx.rect(LP,TP+ci,UW,UH-ci*2);ctx.clip();ctx.lineCap='round';ctx.lineJoin='round';for(const {lw,a} of GLOW_PASSES){ctx.strokeStyle=`rgba(${r},${g},${b},${a})`;ctx.lineWidth=lw;ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();}ctx.restore();}
-  // Clean outlined label above each peak (no boxes — they collide when the pulse amplitude is small)
+  // Outlined label just up-and-left of each peak. Anchored to the LEFT of the cursor so the
+  // erase-ahead zone (cursor+2 .. cursor+ERASE_W) can't nibble the right half of the text.
   function drawLabelAt(absX,y,lbl){
     const lY=Math.max(TP+12,y-11);
     ctx.save();ctx.beginPath();ctx.rect(LP,TP,UW,UH);ctx.clip();
     ctx.fillStyle=lbl.color;ctx.beginPath();ctx.arc(absX,y,2.4,0,Math.PI*2);ctx.fill();
-    ctx.font='700 12px "Rajdhani",sans-serif';ctx.textAlign='center';ctx.textBaseline='alphabetic';
-    ctx.lineJoin='round';ctx.lineWidth=3.2;ctx.strokeStyle='rgba(0,0,0,0.92)';ctx.strokeText(lbl.text,absX,lY);
-    ctx.fillStyle=lbl.color;ctx.fillText(lbl.text,absX,lY);
+    ctx.font='700 12px "Rajdhani",sans-serif';ctx.textAlign='right';ctx.textBaseline='alphabetic';
+    const tx=Math.max(LP+ctx.measureText(lbl.text).width+2, absX-3);
+    ctx.lineJoin='round';ctx.lineWidth=3.2;ctx.strokeStyle='rgba(0,0,0,0.92)';ctx.strokeText(lbl.text,tx,lY);
+    ctx.fillStyle=lbl.color;ctx.fillText(lbl.text,tx,lY);
     ctx.restore();
   }
   function step(dt){
