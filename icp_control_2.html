@@ -278,7 +278,7 @@ roomInput.addEventListener('keydown',e=>{if(e.key==='Enter')connectRoom(roomInpu
 roomInput.addEventListener('input',()=>{roomApply.textContent='Connect';roomApply.classList.remove('live');});
 
 function setTrack(el){el.style.setProperty('--p',((el.value-el.min)/(el.max-el.min))*100+'%');}
-function setupGroup(id,key,colorFn,isNum){$(id).querySelectorAll('.gbtn').forEach(btn=>{btn.addEventListener('click',()=>{$(id).querySelectorAll('.gbtn').forEach(b=>b.className='gbtn');btn.classList.add(colorFn?colorFn(btn.dataset.v):'act');state[key]=isNum?Number(btn.dataset.v):btn.dataset.v;publish();});});}
+function setupGroup(id,key,colorFn){$(id).querySelectorAll('.gbtn').forEach(btn=>{btn.addEventListener('click',()=>{$(id).querySelectorAll('.gbtn').forEach(b=>b.className='gbtn');btn.classList.add(colorFn?colorFn(btn.dataset.v):'act');state[key]=btn.dataset.v;publish();});});}
 
 // ── Visibility pills + layout/fit ──
 const ctrlWrap=$('ctrlWrap'),cols=$('cols'),colIcp=$('colIcp'),colSpo2=$('colSpo2'),noMon=$('noMon');

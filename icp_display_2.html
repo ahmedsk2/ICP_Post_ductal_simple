@@ -79,8 +79,6 @@
   .ld1{background:#d8b4fe;box-shadow:0 0 4px #d8b4fe}
   .ld2{background:#c084fc;box-shadow:0 0 4px #c084fc}
   .ld3{background:#a78bfa;box-shadow:0 0 4px #a78bfa}
-  .lp1{background:#f9a8d4;box-shadow:0 0 4px #f9a8d4}
-  .lp2{background:#f472b6;box-shadow:0 0 4px #f472b6}
   .smsg{font-family:'Rajdhani',sans-serif;font-size:10px;letter-spacing:2px;opacity:0;transition:opacity .3s;color:#ef444499}
   .smsg.on{opacity:1}
   .f-right{display:flex;align-items:center;gap:10px}
@@ -253,7 +251,6 @@ const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const SWEEP_OPT=[{label:'6.25 mm/s',pps:14.5},{label:'12.5 mm/s',pps:28.9},{label:'25 mm/s',pps:57.7},{label:'50 mm/s',pps:115.4}];
 let sweepIdx=2;
 function buildCycleN(pts,res){const a=new Float32Array(res+1);for(let i=0;i<=res;i++){const t=i/res;for(let j=0;j<pts.length-1;j++){const[t0,v0]=pts[j],[t1,v1]=pts[j+1];if(t>=t0&&t<=t1){const u=(t-t0)/(t1-t0),s=u*u*(3-2*u);a[i]=v0+(v1-v0)*s;break;}}}return a;}
-function roundRectPath(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath();}
 
 let state={
   scale:20,zeroTrigger:0,showAnnot:false,sweepSpeedIdx:2,showICP:true,showSpo2:true,
@@ -303,7 +300,8 @@ const ICP=(function(){
     ctx.setLineDash([]);ctx.restore();
   }
   function drawFullBg(){ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);drawGridZone(LP,W-RP);drawYAxis();needsRedraw=false;}
-  function glowSeg(x1,y1,x2,y2,r,g,b){ctx.save();const ci=12;ctx.beginPath();ctx.rect(LP,TP+ci,UW,UH-ci*2);ctx.clip();const ps=[{lw:20,a:.025},{lw:12,a:.07},{lw:6,a:.18},{lw:3,a:.50},{lw:1.5,a:1.0}];ctx.lineCap='round';ctx.lineJoin='round';for(const {lw,a} of ps){ctx.strokeStyle=`rgba(${r},${g},${b},${a})`;ctx.lineWidth=lw;ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();}ctx.restore();}
+  const GLOW_PASSES=[{lw:20,a:.025},{lw:12,a:.07},{lw:6,a:.18},{lw:3,a:.50},{lw:1.5,a:1.0}];
+  function glowSeg(x1,y1,x2,y2,r,g,b){ctx.save();const ci=12;ctx.beginPath();ctx.rect(LP,TP+ci,UW,UH-ci*2);ctx.clip();ctx.lineCap='round';ctx.lineJoin='round';for(const {lw,a} of GLOW_PASSES){ctx.strokeStyle=`rgba(${r},${g},${b},${a})`;ctx.lineWidth=lw;ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();}ctx.restore();}
   // Clean outlined label above each peak (no boxes — they collide when the pulse amplitude is small)
   function drawLabelAt(absX,y,lbl){
     const lY=Math.max(TP+12,y-11);
@@ -337,7 +335,7 @@ const ICP=(function(){
       if(state.showAnnot&&!zeroingPhase&&df<0.06&&!isDisconn&&sweepX===Math.floor(UW/2)){const msg=state.evdClosed?'EVD VALVE CLOSED — NO PULSATILE WAVEFORM':state.catheter==='full'?'CATHETER FULLY OBSTRUCTED':'';if(msg){ctx.save();ctx.font='700 11px "Rajdhani",monospace';ctx.textAlign='center';ctx.fillStyle='rgba(239,68,68,0.5)';ctx.fillText(msg,LP+UW/2,mmhgToY(eICP)-18);ctx.restore();}}
       if(isDisconn&&state.showAnnot&&sweepX===Math.floor(UW/2)){ctx.save();ctx.font='700 11px "Rajdhani",monospace';ctx.textAlign='center';ctx.fillStyle='rgba(107,114,128,0.45)';ctx.fillText('NO SIGNAL — TRANSDUCER DISCONNECTED',LP+UW/2,mmhgToY(0)-18);ctx.restore();}
       if(zeroingPhase&&sweepX===Math.floor(UW/2)){ctx.save();ctx.font='700 11px "Rajdhani",monospace';ctx.textAlign='center';ctx.fillStyle='rgba(148,103,234,0.55)';ctx.fillText('ZEROING TRANSDUCER — REFERENCING TO ATMOSPHERE',LP+UW/2,mmhgToY(0)-18);ctx.restore();}
-      prevY=y;bufOffset++;sweepX++;if(sweepX>=UW){sweepX=0;prevY=null;prevCursorX=null;}
+      prevY=y;bufOffset++;sweepX++;if(sweepX>=UW){sweepX=0;prevY=null;/* keep prevCursorX so the old right-edge cursor gets erased */}
     }
     if(steps>0){const cx=LP+sweepX;if(prevCursorX!==null){const ex=Math.max(LP,prevCursorX-2),ew=Math.min(5,W-RP-ex);ctx.fillStyle='#000';ctx.fillRect(ex,TP,ew,UH);drawGridZone(ex,ex+ew);}ctx.save();ctx.beginPath();ctx.rect(LP,TP,UW,UH);ctx.clip();ctx.strokeStyle='rgba(255,255,255,0.95)';ctx.lineWidth=1;ctx.setLineDash([]);ctx.beginPath();ctx.moveTo(cx,TP);ctx.lineTo(cx,H-BP);ctx.stroke();ctx.restore();prevCursorX=cx;}
     drawYAxis();
@@ -384,7 +382,8 @@ const SpO2=(function(){
     ctx.setLineDash([]);ctx.restore();
   }
   function drawBg(){ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);drawGrid(LP,W-RP);needsRedraw=false;}
-  function glow(x1,y1,x2,y2,r,g,b){ctx.save();const ci=8;ctx.beginPath();ctx.rect(LP,TP+ci,UW,UH-ci*2);ctx.clip();const ps=[{lw:18,a:.03},{lw:10,a:.08},{lw:5,a:.20},{lw:2.6,a:.55},{lw:1.4,a:1.0}];ctx.lineCap='round';ctx.lineJoin='round';for(const {lw,a} of ps){ctx.strokeStyle=`rgba(${r},${g},${b},${a})`;ctx.lineWidth=lw;ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();}ctx.restore();}
+  const GLOW_PASSES=[{lw:18,a:.03},{lw:10,a:.08},{lw:5,a:.20},{lw:2.6,a:.55},{lw:1.4,a:1.0}];
+  function glow(x1,y1,x2,y2,r,g,b){ctx.save();const ci=8;ctx.beginPath();ctx.rect(LP,TP+ci,UW,UH-ci*2);ctx.clip();ctx.lineCap='round';ctx.lineJoin='round';for(const {lw,a} of GLOW_PASSES){ctx.strokeStyle=`rgba(${r},${g},${b},${a})`;ctx.lineWidth=lw;ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();}ctx.restore();}
   function step(dt){
     if(needsRedraw){drawBg();sweepX=0;buf=0;prevY=null;acc=0;prevCur=null;}
     acc+=SWEEP_OPT[sweepIdx].pps*dt;const steps=Math.floor(acc);acc-=steps;
@@ -406,7 +405,7 @@ const SpO2=(function(){
       // on-canvas status text only when annotations are on (clean view otherwise)
       if(state.showAnnot&&noSig&&sweepX===Math.floor(UW/2)){ctx.save();ctx.font='700 11px "Rajdhani",monospace';ctx.textAlign='center';ctx.fillStyle='rgba(100,116,139,0.5)';ctx.fillText('SEARCHING FOR PULSE — CHECK PROBE',LP+UW/2,BASE_Y-26);ctx.restore();}
       if(state.showAnnot&&state.perfusion==='low'&&sweepX===Math.floor(UW/2)){ctx.save();ctx.font='700 11px "Rajdhani",monospace';ctx.textAlign='center';ctx.fillStyle='rgba(245,158,11,0.5)';ctx.fillText('LOW PERFUSION',LP+UW/2,BASE_Y-96);ctx.restore();}
-      prevY=y;buf++;sweepX++;if(sweepX>=UW){sweepX=0;prevY=null;prevCur=null;}
+      prevY=y;buf++;sweepX++;if(sweepX>=UW){sweepX=0;prevY=null;/* keep prevCur so the old right-edge cursor gets erased */}
     }
     if(steps>0){const cx=LP+sweepX;if(prevCur!==null){const ex=Math.max(LP,prevCur-2),ew=Math.min(5,W-RP-ex);ctx.fillStyle='#000';ctx.fillRect(ex,TP,ew,UH);drawGrid(ex,ex+ew);}ctx.save();ctx.beginPath();ctx.rect(LP,TP,UW,UH);ctx.clip();ctx.strokeStyle='rgba(255,255,255,0.9)';ctx.lineWidth=1;ctx.setLineDash([]);ctx.beginPath();ctx.moveTo(cx,TP);ctx.lineTo(cx,H-BP);ctx.stroke();ctx.restore();prevCur=cx;}
   }
@@ -447,10 +446,23 @@ function setRoomId(id){roomId=id;localStorage.setItem('icpDisplayRoomId',id);doc
 // ═══════════════ MQTT ═══════════════
 let mqttTopic='';
 const tbDot=document.getElementById('tbDot'),tbLive=document.getElementById('tbLive');
+// Inbound MQTT is UNTRUSTED (public broker, guessable room id). Coerce/validate every
+// field before it reaches the render state — this blocks HTML injection into innerHTML
+// readouts and NaN/out-of-range values reaching the canvas math.
+const NUM_RANGE={scale:[10,50],icpValue:[-5,60],alarmThreshold:[5,60],spo2:[0,100],pulseRate:[20,300],spo2Alarm:[40,100],zeroTrigger:[0,1e9]};
+const BOOL_KEYS=['showAnnot','showICP','showSpo2','evdClosed','respMod','alarmSilenced','spo2Silenced'];
+const ENUM_KEYS={preset:['normal','poor'],catheter:['normal','partial','full','disconnected'],perfusion:['normal','low','none']};
+function applyState(msg){
+  if(!msg||typeof msg!=='object')return;
+  for(const k in NUM_RANGE){if(k in msg){const n=Number(msg[k]);if(Number.isFinite(n))state[k]=clamp(n,NUM_RANGE[k][0],NUM_RANGE[k][1]);}}
+  if('sweepSpeedIdx' in msg){const n=Math.round(Number(msg.sweepSpeedIdx));if(Number.isFinite(n))state.sweepSpeedIdx=clamp(n,0,SWEEP_OPT.length-1);}
+  for(const k of BOOL_KEYS){if(k in msg)state[k]=!!msg[k];}
+  for(const k in ENUM_KEYS){if(ENUM_KEYS[k].includes(msg[k]))state[k]=msg[k];}
+}
 const client=mqtt.connect('wss://broker.hivemq.com:8884/mqtt',{clientId:'icp-disp-'+Math.random().toString(16).slice(2,8),clean:true,reconnectPeriod:2000});
 client.on('connect',()=>{tbDot.classList.remove('off');tbLive.textContent='LIVE';if(mqttTopic)client.subscribe(mqttTopic);});
 client.on('close',()=>{tbDot.classList.add('off');tbLive.textContent='OFFLINE';});
-client.on('message',(_,payload)=>{try{const msg=JSON.parse(payload.toString());ICP.maybeZero(msg.zeroTrigger);if(msg.scale&&msg.scale!==state.scale)ICP.markRedraw();Object.assign(state,msg);}catch(e){}});
+client.on('message',(_,payload)=>{try{const msg=JSON.parse(payload.toString());ICP.maybeZero(Number(msg.zeroTrigger)||0);applyState(msg);}catch(e){}});
 function connectRoom(id){const newT=TOPIC_BASE+id;if(newT===mqttTopic)return;if(mqttTopic&&client.connected)client.unsubscribe(mqttTopic);mqttTopic=newT;if(client.connected)client.subscribe(mqttTopic);}
 
 // ═══════════════ OVERLAY / ROOM EDIT ═══════════════
@@ -467,7 +479,7 @@ roomInput.addEventListener('keydown',e=>{if(e.key==='Enter')applyRoomFromInput()
 roomInput.addEventListener('input',()=>{roomInput.value=roomInput.value.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6);roomHint.textContent='Share this ID with the controller to pair them.';roomHint.style.color='';});
 document.getElementById('regenBtn').addEventListener('click',()=>{const id=genId();setRoomId(id);connectRoom(id);roomHint.textContent='✓ New ID generated — enter it on the controller.';roomHint.style.color='#f472b6';});
 function setSweepUI(){document.getElementById('sweepGroup').querySelectorAll('.obtn').forEach(b=>b.classList.toggle('act',parseInt(b.dataset.i)===sweepIdx));}
-document.getElementById('sweepGroup').querySelectorAll('.obtn').forEach(btn=>{btn.addEventListener('click',()=>{sweepIdx=parseInt(btn.dataset.i);setSweepUI();ICP.markRedraw();SpO2.markRedraw();});});
+document.getElementById('sweepGroup').querySelectorAll('.obtn').forEach(btn=>{btn.addEventListener('click',()=>{sweepIdx=parseInt(btn.dataset.i);state.sweepSpeedIdx=sweepIdx;/* keep it from being reverted by the frame-loop sync */setSweepUI();ICP.markRedraw();SpO2.markRedraw();});});
 const zeroBtnOv=document.getElementById('zeroBtnOv');
 zeroBtnOv.addEventListener('click',()=>{if(ICP.triggerZero()){zeroBtnOv.textContent='⊘  Zeroing…';zeroBtnOv.classList.add('processing');}});
 
