@@ -197,10 +197,6 @@
         <div class="canvas-wrap"><canvas id="spo2Canvas" width="860" height="240"></canvas></div>
         <div class="ftr">
           <div class="f-left">
-            <div class="legend" id="spo2Legend">
-              <div class="li"><div class="ld lp1"></div>Systolic</div>
-              <div class="li"><div class="ld lp2"></div>Dicrotic notch</div>
-            </div>
             <div class="smsg" id="spo2Status"></div>
           </div>
           <div class="f-right">
@@ -308,15 +304,15 @@ const ICP=(function(){
   }
   function drawFullBg(){ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);drawGridZone(LP,W-RP);drawYAxis();needsRedraw=false;}
   function glowSeg(x1,y1,x2,y2,r,g,b){ctx.save();const ci=12;ctx.beginPath();ctx.rect(LP,TP+ci,UW,UH-ci*2);ctx.clip();const ps=[{lw:20,a:.025},{lw:12,a:.07},{lw:6,a:.18},{lw:3,a:.50},{lw:1.5,a:1.0}];ctx.lineCap='round';ctx.lineJoin='round';for(const {lw,a} of ps){ctx.strokeStyle=`rgba(${r},${g},${b},${a})`;ctx.lineWidth=lw;ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();}ctx.restore();}
+  // Clean outlined label above each peak (no boxes — they collide when the pulse amplitude is small)
   function drawLabelAt(absX,y,lbl){
-    const chipH=16,gap=12;let cy=y-gap-chipH;if(cy<TP+3)cy=TP+3;const textY=cy+chipH-4;
+    const lY=Math.max(TP+12,y-11);
     ctx.save();ctx.beginPath();ctx.rect(LP,TP,UW,UH);ctx.clip();
-    ctx.fillStyle=lbl.color;ctx.beginPath();ctx.arc(absX,y,2.8,0,Math.PI*2);ctx.fill();
-    ctx.strokeStyle=lbl.color;ctx.lineWidth=1;ctx.setLineDash([2,3]);ctx.beginPath();ctx.moveTo(absX,y-4);ctx.lineTo(absX,cy+chipH);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle=lbl.color;ctx.beginPath();ctx.arc(absX,y,2.4,0,Math.PI*2);ctx.fill();
     ctx.font='700 12px "Rajdhani",sans-serif';ctx.textAlign='center';ctx.textBaseline='alphabetic';
-    const w=ctx.measureText(lbl.text).width;const cx=Math.min(Math.max(absX,LP+w/2+7),W-RP-w/2-7);
-    roundRectPath(ctx,cx-w/2-6,cy,w+12,chipH,4);ctx.fillStyle='rgba(0,0,0,0.82)';ctx.fill();ctx.strokeStyle=lbl.color;ctx.lineWidth=1;ctx.stroke();
-    ctx.fillStyle=lbl.color;ctx.fillText(lbl.text,cx,textY);ctx.restore();
+    ctx.lineJoin='round';ctx.lineWidth=3.2;ctx.strokeStyle='rgba(0,0,0,0.92)';ctx.strokeText(lbl.text,absX,lY);
+    ctx.fillStyle=lbl.color;ctx.fillText(lbl.text,absX,lY);
+    ctx.restore();
   }
   function step(dt){
     if(zeroingPhase&&(Date.now()-zeroingStart)/1000>4){zeroingPhase=false;zeroedFlash=true;zeroedStart=Date.now();}
@@ -371,13 +367,12 @@ const SpO2=(function(){
   // Plethysmograph (pulse-oximeter) — rounded systolic hump, soft dicrotic notch (0..1)
   const PLETH_PTS=[[0,.14],[.05,.16],[.12,.30],[.22,.72],[.32,.95],[.40,1.0],[.48,.95],[.56,.74],[.63,.60],[.68,.64],[.76,.55],[.86,.33],[.95,.19],[1,.14]];
   const PLETH=buildCycleN(PLETH_PTS,RES);
-  const PLETH_LABELS=[{t:.40,text:'Systolic',color:'#f9a8d4'},{t:.63,text:'Dicrotic notch',color:'#f472b6'}];
-  let sweepX=0,buf=0,prevY=null,acc=0,prevCur=null,needsRedraw=true,prevPhase=0;
+  let sweepX=0,buf=0,prevY=null,acc=0,prevCur=null,needsRedraw=true;
   let ampSmooth=1.0,curAmp=0;
   const pulseBar=document.getElementById('pulseBar'),spo2Disp=document.getElementById('spo2Display');
   const prDisp=document.getElementById('prDisplay'),piLabel=document.getElementById('piLabel');
   const sweepLbl=document.getElementById('spo2SweepLabel'),statusMsg=document.getElementById('spo2Status');
-  const alarmIcon=document.getElementById('spo2AlarmIcon'),legendEl=document.getElementById('spo2Legend');
+  const alarmIcon=document.getElementById('spo2AlarmIcon');
   function cyclePx(){const bpm=clamp(state.pulseRate||120,30,240);return clamp(SWEEP_OPT[sweepIdx].pps*60/bpm*BEAT_SLOWDOWN,24,560);}
   function targetAmp(){if(state.perfusion==='none')return 0;if(state.perfusion==='low')return 0.22;return 1.0;}
   function plethVal(b,cp){const p=((b%cp)+cp)%cp;const idx=Math.min(Math.round(p/cp*RES),RES);return PLETH[idx];}
@@ -390,23 +385,14 @@ const SpO2=(function(){
   }
   function drawBg(){ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);drawGrid(LP,W-RP);needsRedraw=false;}
   function glow(x1,y1,x2,y2,r,g,b){ctx.save();const ci=8;ctx.beginPath();ctx.rect(LP,TP+ci,UW,UH-ci*2);ctx.clip();const ps=[{lw:18,a:.03},{lw:10,a:.08},{lw:5,a:.20},{lw:2.6,a:.55},{lw:1.4,a:1.0}];ctx.lineCap='round';ctx.lineJoin='round';for(const {lw,a} of ps){ctx.strokeStyle=`rgba(${r},${g},${b},${a})`;ctx.lineWidth=lw;ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();}ctx.restore();}
-  function drawLabelAt(absX,y,lbl){
-    const chipH=16,gap=12;let cy=y-gap-chipH;if(cy<TP+3)cy=TP+3;const textY=cy+chipH-4;
-    ctx.save();ctx.beginPath();ctx.rect(LP,TP,UW,UH);ctx.clip();
-    ctx.fillStyle=lbl.color;ctx.beginPath();ctx.arc(absX,y,2.8,0,Math.PI*2);ctx.fill();
-    ctx.strokeStyle=lbl.color;ctx.lineWidth=1;ctx.setLineDash([2,3]);ctx.beginPath();ctx.moveTo(absX,y-4);ctx.lineTo(absX,cy+chipH);ctx.stroke();ctx.setLineDash([]);
-    ctx.font='700 12px "Rajdhani",sans-serif';ctx.textAlign='center';ctx.textBaseline='alphabetic';
-    const w=ctx.measureText(lbl.text).width;const cx=Math.min(Math.max(absX,LP+w/2+7),W-RP-w/2-7);
-    roundRectPath(ctx,cx-w/2-6,cy,w+12,chipH,4);ctx.fillStyle='rgba(0,0,0,0.82)';ctx.fill();ctx.strokeStyle=lbl.color;ctx.lineWidth=1;ctx.stroke();
-    ctx.fillStyle=lbl.color;ctx.fillText(lbl.text,cx,textY);ctx.restore();
-  }
   function step(dt){
-    if(needsRedraw){drawBg();sweepX=0;buf=0;prevY=null;acc=0;prevCur=null;prevPhase=0;}
+    if(needsRedraw){drawBg();sweepX=0;buf=0;prevY=null;acc=0;prevCur=null;}
     acc+=SWEEP_OPT[sweepIdx].pps*dt;const steps=Math.floor(acc);acc-=steps;
     const cp=cyclePx();ampSmooth+=(targetAmp()-ampSmooth)*0.05;
-    const noSig=state.perfusion==='none',lowSat=state.spo2<state.spo2Alarm&&!state.spo2Silenced;
-    const[r,g,b]=noSig?[100,116,139]:state.perfusion==='low'?[245,158,11]:lowSat?[244,63,94]:[244,114,182];
-    const showLbl=state.showAnnot&&!noSig&&ampSmooth>0.35;
+    const noSig=state.perfusion==='none';
+    // waveform turns red only when the low-SpO₂ alarm is armed (annotations on) — matches the ICP monitor
+    const alarmActive=state.showAnnot&&state.spo2<state.spo2Alarm&&!state.spo2Silenced;
+    const[r,g,b]=noSig?[100,116,139]:alarmActive?[244,63,94]:[244,114,182];
     for(let i=0;i<steps;i++){
       const absX=LP+sweepX;
       const ahead=(sweepX+2)%UW,aAbsX=LP+ahead,aEnd=Math.min(aAbsX+ERASE_W,W-RP);
@@ -417,26 +403,33 @@ const SpO2=(function(){
       else{const resp=1+0.06*Math.sin(2*Math.PI*buf/(cp*6));val=plethVal(buf,cp);y=BASE_Y-val*ampSmooth*resp*SPAN;}
       y=clamp(y,TP+1,H-BP-1);curAmp=noSig?0:val*ampSmooth;
       if(prevY!==null&&sweepX>0)glow(absX-1,prevY,absX,y,r,g,b);
-      // annotation labels at systolic peak / dicrotic notch (phase crossing)
-      if(showLbl){const phase=(((buf%cp)+cp)%cp)/cp;if(phase>=prevPhase){for(const lbl of PLETH_LABELS){if(prevPhase<lbl.t&&phase>=lbl.t)drawLabelAt(absX,y,lbl);}}prevPhase=phase;}
-      else prevPhase=(((buf%cp)+cp)%cp)/cp;
-      if(noSig&&sweepX===Math.floor(UW/2)){ctx.save();ctx.font='700 11px "Rajdhani",monospace';ctx.textAlign='center';ctx.fillStyle='rgba(100,116,139,0.5)';ctx.fillText('SEARCHING FOR PULSE — CHECK PROBE',LP+UW/2,BASE_Y-26);ctx.restore();}
-      if(state.perfusion==='low'&&state.showAnnot&&sweepX===Math.floor(UW/2)){ctx.save();ctx.font='700 11px "Rajdhani",monospace';ctx.textAlign='center';ctx.fillStyle='rgba(245,158,11,0.5)';ctx.fillText('LOW PERFUSION',LP+UW/2,BASE_Y-96);ctx.restore();}
+      // on-canvas status text only when annotations are on (clean view otherwise)
+      if(state.showAnnot&&noSig&&sweepX===Math.floor(UW/2)){ctx.save();ctx.font='700 11px "Rajdhani",monospace';ctx.textAlign='center';ctx.fillStyle='rgba(100,116,139,0.5)';ctx.fillText('SEARCHING FOR PULSE — CHECK PROBE',LP+UW/2,BASE_Y-26);ctx.restore();}
+      if(state.showAnnot&&state.perfusion==='low'&&sweepX===Math.floor(UW/2)){ctx.save();ctx.font='700 11px "Rajdhani",monospace';ctx.textAlign='center';ctx.fillStyle='rgba(245,158,11,0.5)';ctx.fillText('LOW PERFUSION',LP+UW/2,BASE_Y-96);ctx.restore();}
       prevY=y;buf++;sweepX++;if(sweepX>=UW){sweepX=0;prevY=null;prevCur=null;}
     }
     if(steps>0){const cx=LP+sweepX;if(prevCur!==null){const ex=Math.max(LP,prevCur-2),ew=Math.min(5,W-RP-ex);ctx.fillStyle='#000';ctx.fillRect(ex,TP,ew,UH);drawGrid(ex,ex+ew);}ctx.save();ctx.beginPath();ctx.rect(LP,TP,UW,UH);ctx.clip();ctx.strokeStyle='rgba(255,255,255,0.9)';ctx.lineWidth=1;ctx.setLineDash([]);ctx.beginPath();ctx.moveTo(cx,TP);ctx.lineTo(cx,H-BP);ctx.stroke();ctx.restore();prevCur=cx;}
   }
   function updateDOM(){
     const noSig=state.perfusion==='none',lowSat=state.spo2<state.spo2Alarm&&!state.spo2Silenced;
-    if(noSig){spo2Disp.innerHTML='--<span class="unit">%</span>';spo2Disp.style.color='#475569';spo2Disp.style.textShadow='none';spo2Disp.classList.remove('alarming');prDisp.innerHTML='--<span class="unit">bpm</span>';prDisp.style.color='#475569';alarmIcon.classList.remove('on');}
-    else{spo2Disp.innerHTML=`${state.spo2}<span class="unit">%</span>`;const c=lowSat?'#f43f5e':state.spo2<92?'#fbbf24':'#f472b6';spo2Disp.style.color=c;spo2Disp.style.textShadow=`0 0 20px ${c}88`;spo2Disp.classList.toggle('alarming',!!lowSat);prDisp.innerHTML=`${state.pulseRate}<span class="unit">bpm</span>`;prDisp.style.color='#34d399';alarmIcon.classList.toggle('on',!!lowSat);}
-    legendEl.classList.toggle('on',state.showAnnot&&!noSig);
+    const alm=!noSig&&lowSat&&state.showAnnot;
+    if(noSig){spo2Disp.innerHTML='--<span class="unit">%</span>';spo2Disp.style.color='#475569';spo2Disp.style.textShadow='none';spo2Disp.classList.remove('alarming');prDisp.innerHTML='--<span class="unit">bpm</span>';prDisp.style.color='#475569';}
+    else{
+      spo2Disp.innerHTML=`${state.spo2}<span class="unit">%</span>`;
+      if(state.showAnnot){const c=lowSat?'#f43f5e':state.spo2<92?'#fbbf24':'#f472b6';spo2Disp.style.color=c;spo2Disp.style.textShadow=`0 0 20px ${c}88`;}
+      else{spo2Disp.style.color='#f472b6';spo2Disp.style.textShadow='0 0 20px rgba(244,114,182,.5)';}
+      spo2Disp.classList.toggle('alarming',!!alm);
+      prDisp.innerHTML=`${state.pulseRate}<span class="unit">bpm</span>`;prDisp.style.color='#34d399';
+    }
+    alarmIcon.classList.toggle('on',!!alm);
     let pi='--';if(!noSig)pi=(state.perfusion==='low'?0.25:2.4).toFixed(1);piLabel.textContent=`PI ${pi}${noSig?'':'%'}`;
     sweepLbl.textContent=SWEEP_OPT[sweepIdx].label;
     let sm='',sv=false,sc='rgba(244,63,94,0.7)';
-    if(noSig){sm='SEARCHING FOR PULSE';sv=true;sc='rgba(100,116,139,0.7)';}
-    else if(lowSat){sm=`⚠ SpO₂ < ${state.spo2Alarm}%`;sv=true;}
-    else if(state.perfusion==='low'){sm='LOW PERFUSION — INTERPRET WITH CAUTION';sv=true;sc='rgba(245,158,11,0.7)';}
+    if(state.showAnnot){
+      if(noSig){sm='SEARCHING FOR PULSE';sv=true;sc='rgba(100,116,139,0.7)';}
+      else if(alm){sm=`⚠ SpO₂ < ${state.spo2Alarm}%`;sv=true;}
+      else if(state.perfusion==='low'){sm='LOW PERFUSION — INTERPRET WITH CAUTION';sv=true;sc='rgba(245,158,11,0.7)';}
+    }
     statusMsg.textContent=sm;statusMsg.style.color=sc;statusMsg.classList.toggle('on',sv);
     pulseBar.style.height=(4+18*clamp(curAmp,0,1)).toFixed(0)+'px';
     pulseBar.style.background=noSig?'#475569':state.perfusion==='low'?'#f59e0b':'#f472b6';
