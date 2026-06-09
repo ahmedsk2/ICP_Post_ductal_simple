@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ICP Monitor</title>
+<script src="https://unpkg.com/mqtt@4.3.7/dist/mqtt.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;500;700&display=swap');
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+  body{
+    background:#0a0a0a;
+    display:flex;flex-direction:column;
+    align-items:center;justify-content:center;
+    min-height:100vh;
+    font-family:'Share Tech Mono',monospace;
+    overflow:hidden;
+  }
+
+  /* Responsive wrapper: scales the monitor to viewport */
+  #monitorWrap{
+    transform-origin:top left;
+    width:860px;
+  }
+
+  .monitor{
+    width:860px;
+    background:#050505;
+    border:1px solid #6b7280;
+    border-radius:6px;
+    box-shadow:0 0 0 1px #374151;
+    overflow:hidden;
+  }
+
+  /* Header */
+  .hdr{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:9px 16px 8px;
+    border-bottom:1px solid #374151;
+    background:#0a0a0a;
+    gap:10px;
+  }
+  .h-left{display:flex;align-items:center;gap:10px;flex-shrink:0}
+  .chan{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:13px;letter-spacing:4px;color:#6b7280}
+
+  /* Room ID badge — big and clear */
+  .room-badge{
+    font-family:'Rajdhani',sans-serif;font-size:11px;font-weight:700;
+    letter-spacing:2px;color:#374151;
+    padding:3px 9px;border:1px solid #2d3748;border-radius:3px;
+    white-space:nowrap;
+  }
+
+  /* ICP number — centre, large */
+  .icp-val{
+    font-family:'Rajdhani',sans-serif;
+    font-size:38px;font-weight:700;
+    color:#a855f7;
+    text-shadow:0 0 20px rgba(168,85,247,.5);
+    letter-spacing:3px;
+    text-align:center;
+    min-width:150px;
+    line-height:1;
+    transition:color .3s,text-shadow .3s;
+  }
+  .icp-val .unit{
+    font-size:13px;font-weight:300;
+    color:#6b21a8;margin-left:4px;letter-spacing:1px;
+  }
+  .icp-val.alarming{animation:alrm .5s step-end infinite}
+  @keyframes alrm{50%{opacity:.08}}
+
+  .icp-amp{
+    font-family:'Rajdhani',sans-serif;font-size:13px;
+    color:#7c3aed88;letter-spacing:1px;
+    display:none;text-align:center;
+  }
+
+  .h-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
+  .preset-badge{font-family:'Rajdhani',sans-serif;font-size:10px;letter-spacing:2px;color:#a855f755;text-transform:uppercase}
+  .alarm-icon{font-size:16px;color:#ef4444;display:none;text-shadow:0 0 8px #ef4444}
+  .alarm-icon.on{display:inline;animation:abl .5s step-end infinite}
+  @keyframes abl{50%{opacity:0}}
+  .live-label{font-size:10px;color:#37415166;letter-spacing:2px;font-family:'Rajdhani',sans-serif}
+  .sdot{width:8px;height:8px;border-radius:50%;background:#4b5563;box-shadow:0 0 5px #4b5563;animation:blink 1s step-end infinite}
+  @keyframes blink{50%{opacity:0}}
+
+  /* Canvas */
+  .canvas-wrap{position:relative;background:#000;line-height:0}
+  canvas{display:block}
+
+  /* Footer */
+  .ftr{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:6px 16px;border-top:1px solid #374151;
+    background:#0a0a0a;height:34px;
+  }
+  .f-left{display:flex;align-items:center;gap:14px}
+  .legend{display:flex;gap:12px;align-items:center;opacity:0;transition:opacity .4s}
+  .legend.on{opacity:1}
+  .li{font-family:'Rajdhani',sans-serif;font-size:11px;display:flex;align-items:center;gap:5px;color:#6b7280}
+  .ld{width:6px;height:6px;border-radius:50%}
+  .ld1{background:#c084fc;box-shadow:0 0 4px #c084fc}
+  .ld2{background:#a855f7;box-shadow:0 0 4px #a855f7}
+  .ld3{background:#7c3aed;box-shadow:0 0 4px #7c3aed}
+  .smsg{font-family:'Rajdhani',sans-serif;font-size:10px;letter-spacing:2px;opacity:0;transition:opacity .3s;color:#ef444499}
+  .smsg.on{opacity:1}
+
+  .f-right{display:flex;align-items:center;gap:8px}
+  .flabel{font-family:'Rajdhani',sans-serif;font-size:10px;letter-spacing:1px;color:#37415166}
+  .icon-btn{
+    background:none;border:1px solid #1f2937;border-radius:4px;
+    color:#374151;font-family:'Rajdhani',sans-serif;
+    font-size:10px;letter-spacing:2px;padding:3px 8px;
+    cursor:pointer;transition:all .2s;text-transform:uppercase;
+  }
+  .icon-btn:hover{border-color:#6b7280;color:#9ca3af}
+  .icon-btn.on{border-color:#7c3aed55;color:#a855f788}
+
+  /* Credit line */
+  .credit{
+    font-family:'Rajdhani',sans-serif;font-size:11px;letter-spacing:1px;
+    color:#475569;text-align:center;padding:10px 4px 2px;line-height:1.4;
+  }
+  .credit b{color:#a855f7aa;font-weight:700}
+
+  /* Settings overlay */
+  #sOverlay{
+    position:fixed;inset:0;z-index:200;
+    display:flex;align-items:center;justify-content:center;
+    opacity:0;pointer-events:none;transition:opacity .2s;
+  }
+  #sOverlay.open{opacity:1;pointer-events:all}
+  .ov-bg{position:absolute;inset:0;background:rgba(0,0,0,.85);backdrop-filter:blur(4px)}
+  .ov-box{
+    position:relative;background:#0f172a;border:1px solid #334155;
+    border-radius:10px;padding:24px 26px 22px;width:360px;
+    display:flex;flex-direction:column;gap:16px;
+    box-shadow:0 0 60px rgba(0,0,0,.9);
+  }
+  .ov-title{font-family:'Rajdhani',sans-serif;font-size:10px;letter-spacing:5px;color:#475569;text-transform:uppercase}
+  .ov-close{position:absolute;top:14px;right:16px;font-size:18px;color:#475569;cursor:pointer;background:none;border:none;transition:color .2s}
+  .ov-close:hover{color:#e2e8f0}
+  .ov-sec{display:flex;flex-direction:column;gap:8px}
+  .ov-lbl{font-family:'Rajdhani',sans-serif;font-size:9px;letter-spacing:3px;color:#334155;text-transform:uppercase}
+  .ov-div{border:none;border-top:1px solid #1e293b}
+
+  /* Room ID display in overlay */
+  .room-id-display{
+    font-family:'Share Tech Mono',monospace;font-size:28px;font-weight:700;
+    color:#a855f7;text-shadow:0 0 16px rgba(168,85,247,.5);
+    text-align:center;letter-spacing:6px;padding:8px 0;
+    background:#0a0010;border:1px solid #3b0764;border-radius:6px;
+  }
+  .room-id-hint{font-family:'Rajdhani',sans-serif;font-size:10px;color:#334155;text-align:center;letter-spacing:1px}
+  .room-regen{
+    padding:8px;font-family:'Rajdhani',sans-serif;font-size:11px;letter-spacing:2px;
+    background:#0a0a0a;border:1px solid #334155;border-radius:5px;
+    color:#475569;cursor:pointer;transition:all .2s;text-transform:uppercase;
+  }
+  .room-regen:hover{border-color:#6b7280;color:#94a3b8}
+
+  /* Sweep buttons in overlay */
+  .ov-grid{display:grid;gap:5px}
+  .ov-grid.g4{grid-template-columns:1fr 1fr 1fr 1fr}
+  .obtn{
+    padding:8px 4px;font-family:'Rajdhani',sans-serif;font-size:11px;font-weight:500;
+    background:#0a0a0a;border:1px solid #1e293b;border-radius:5px;
+    color:#475569;cursor:pointer;transition:all .2s;text-align:center;line-height:1.3;
+  }
+  .obtn:hover{border-color:#475569;color:#94a3b8}
+  .obtn.act{background:#2e1065;border-color:#7c3aed;color:#c084fc}
+
+  /* Zero button */
+  .zero-btn{
+    width:100%;padding:10px;font-family:'Rajdhani',sans-serif;font-size:12px;letter-spacing:3px;
+    background:#0a0a0a;border:1px solid #334155;border-radius:6px;color:#64748b;
+    cursor:pointer;transition:all .2s;text-transform:uppercase;
+  }
+  .zero-btn:hover{border-color:#a855f7;color:#a855f7}
+  .zero-btn.processing{opacity:.35;pointer-events:none}
+</style>
+</head>
+<body>
+
+<div id="monitorWrap">
+<div class="monitor">
+
+  <div class="hdr">
+    <div class="h-left">
+      <div class="chan">ICP — CH1</div>
+      <div class="room-badge" id="roomBadge">···</div>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+      <div class="icp-val" id="icpDisplay">12<span class="unit">mmHg</span></div>
+      <div class="icp-amp" id="ampDisplay"></div>
+    </div>
+    <div class="h-right">
+      <div class="preset-badge" id="presetBadge"></div>
+      <div class="alarm-icon" id="alarmIcon">⚠</div>
+      <div class="live-label">LIVE</div>
+      <div class="sdot"></div>
+    </div>
+  </div>
+
+  <div class="canvas-wrap">
+    <canvas id="icpCanvas" width="860" height="240"></canvas>
+  </div>
+
+  <div class="ftr">
+    <div class="f-left">
+      <div class="legend" id="legend">
+        <div class="li"><div class="ld ld1"></div>P1</div>
+        <div class="li"><div class="ld ld2"></div>P2</div>
+        <div class="li"><div class="ld ld3"></div>P3</div>
+      </div>
+      <div class="smsg" id="statusMsg"></div>
+    </div>
+    <div class="f-right">
+      <div class="flabel" id="sweepLabel">25 mm/s</div>
+      <div class="flabel" id="scaleLabel">0–20 mmHg</div>
+      <button class="icon-btn" id="settingsBtn">⚙ SETTINGS</button>
+    </div>
+  </div>
+</div><!-- .monitor -->
+
+  <div class="credit">
+    Created by <b>Ahmed Al Khalifah</b> · Neurocritical Care Fellow · SickKids
+  </div>
+</div><!-- #monitorWrap -->
+
+<!-- Settings overlay -->
+<div id="sOverlay">
+  <div class="ov-bg" id="ovBg"></div>
+  <div class="ov-box">
+    <div class="ov-title">Display Settings</div>
+    <button class="ov-close" id="ovClose">✕</button>
+
+    <div class="ov-sec">
+      <div class="ov-lbl">Room ID — share this with the controller</div>
+      <div class="room-id-display" id="ovRoomId">······</div>
+      <div class="room-id-hint">Enter this ID on the controller page</div>
+      <button class="room-regen" id="regenBtn">↺ Generate New ID</button>
+    </div>
+
+    <hr class="ov-div">
+
+    <div class="ov-sec">
+      <div class="ov-lbl">Sweep Speed</div>
+      <div class="ov-grid g4" id="sweepGroup">
+        <button class="obtn" data-i="0">6.25<br><span style="font-size:9px;opacity:.6">mm/s</span></button>
+        <button class="obtn" data-i="1">12.5<br><span style="font-size:9px;opacity:.6">mm/s</span></button>
+        <button class="obtn act" data-i="2">25<br><span style="font-size:9px;opacity:.6">mm/s</span></button>
+        <button class="obtn" data-i="3">50<br><span style="font-size:9px;opacity:.6">mm/s</span></button>
+      </div>
+    </div>
+
+    <hr class="ov-div">
+
+    <div class="ov-sec">
+      <div class="ov-lbl">Transducer</div>
+      <button class="zero-btn" id="zeroBtnOv">⊘  Zero ICP</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+//  CONSTANTS
+// ═══════════════════════════════════════════════════════
+const TOPIC_BASE = 'icpm-X9-'; // prefix + roomId
+const W=860, H=240, TP=10, BP=22, LP=46, RP=8;
+const UW=W-LP-RP, UH=H-TP-BP;   // plot area: 806×208
+const RESOLUTION = 500;
+const ERASE_W = 26;  // must cover max glow radius (lw=20 → 10px each side)
+const MAX_CYCLE_VAL = 14.0; // peak value in wave shape definition
+
+// Fixed cardiac + respiratory cycle widths (px)
+const CYCLE_PX = 146;  // pulse cycle width
+const RESP_PX  = 275;  // respiratory cycle width
+
+// Sweep: pixels/second  (808px ≈ 8.6s at 25mm/s for typical screen)
+const SWEEP_OPT = [
+  {label:'6.25 mm/s', pps:14.5},
+  {label:'12.5 mm/s', pps:28.9},
+  {label:'25 mm/s',   pps:57.7},
+  {label:'50 mm/s',   pps:115.4},
+];
+
+// ═══════════════════════════════════════════════════════
+//  WAVE SHAPES  (normalised 0–14 relative amplitude)
+//  Peaks land at t≈.13 (P1), .30 (P2), .50 (P3)
+// ═══════════════════════════════════════════════════════
+const WAVE_PTS = {
+  // Normal compliance: P1 > P2 > P3 (descending percussion → tidal → dicrotic)
+  normal: [[0,0],[.05,2],[.13,14],[.20,7],[.30,11],[.40,5],[.50,8],[.62,2],[.75,.5],[.85,.3],[1,0]],
+  // Poor compliance: P2 ≥ P1 — tidal wave elevated, rounded "pyramidal" shape
+  poor:   [[0,0],[.05,2],[.13,9],[.20,7.5],[.30,13],[.40,9],[.50,11],[.60,5],[.72,2],[.85,.5],[1,0]],
+};
+function buildCycle(pts){
+  const a=new Float32Array(RESOLUTION+1);
+  for(let i=0;i<=RESOLUTION;i++){
+    const t=i/RESOLUTION;
+    for(let j=0;j<pts.length-1;j++){
+      const[t0,v0]=pts[j],[t1,v1]=pts[j+1];
+      if(t>=t0&&t<=t1){const u=(t-t0)/(t1-t0),s=u*u*(3-2*u);a[i]=v0+(v1-v0)*s;break;}
+    }
+  }
+  return a;
+}
+const CYCLES={normal:buildCycle(WAVE_PTS.normal),poor:buildCycle(WAVE_PTS.poor)};
+
+const PEAK_LABELS=[
+  {t:.13,text:'P1',color:'#c084fccc'},
+  {t:.30,text:'P2',color:'#a855f7cc'},
+  {t:.50,text:'P3',color:'#7c3aedcc'},
+];
+
+const PRESET_NAMES={normal:'Normal',poor:'Poor Compliance'};
+
+// ═══════════════════════════════════════════════════════
+//  REMOTE STATE  (from controller via MQTT)
+// ═══════════════════════════════════════════════════════
+let state = {
+  icpValue:12, scale:20, zeroTrigger:0,
+  preset:'normal',
+  evdClosed:false, catheter:'normal',
+  respMod:false,
+  alarmThreshold:20, alarmSilenced:false,
+  showAnnot:false,
+  sweepSpeedIdx:2,
+};
+
+// ═══════════════════════════════════════════════════════
+//  LOCAL DISPLAY STATE
+// ═══════════════════════════════════════════════════════
+let sweepIdx     = 2;       // 25mm/s
+let roomId = '';
+
+// Sweep animation
+let sweepX = 0, bufOffset = 0, prevY = null, speedAccum = 0;
+let lastFrameTs = null;
+let prevCursorX = null;
+
+// Physics
+let dampFactor=1.0;
+let lastScale=20, needsRedraw=true;
+
+// Zeroing (cosmetic)
+let zeroingPhase=false, zeroingStart=0;
+let zeroedFlash=false, zeroedStart=0;
+let lastZeroTrig=null;
+
+let lastDOMUpd=0;
+
+// ═══════════════════════════════════════════════════════
+//  ROOM ID
+// ═══════════════════════════════════════════════════════
+function genId(){
+  const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  return Array.from({length:6},()=>c[Math.floor(Math.random()*c.length)]).join('');
+}
+function loadRoomId(){
+  let id=localStorage.getItem('icpDisplayRoomId')||'';
+  if(!id||id.length!==6){id=genId();localStorage.setItem('icpDisplayRoomId',id);}
+  return id;
+}
+function setRoomId(id){
+  roomId=id;
+  localStorage.setItem('icpDisplayRoomId',id);
+  document.getElementById('roomBadge').textContent=`ID: ${id}`;
+  document.getElementById('ovRoomId').textContent=id;
+}
+
+// ═══════════════════════════════════════════════════════
+//  PHYSICS HELPERS
+// ═══════════════════════════════════════════════════════
+// Y coordinate: 0mmHg → bottom (H-BP), scale mmHg → top (TP)
+function mmhgToY(p){
+  return H - BP - (Math.max(0, p) / state.scale) * UH;
+}
+
+function getCycleKey(){
+  return state.preset==='poor' ? 'poor' : 'normal';
+}
+
+function sampleWave(buf){
+  const cp=((buf%CYCLE_PX)+CYCLE_PX)%CYCLE_PX;
+  const idx=Math.min(Math.round(cp/CYCLE_PX*RESOLUTION),RESOLUTION);
+  return CYCLES[getCycleKey()][idx];
+}
+
+// Realistic pulse pressure: ~20–25% of mean ICP
+// (Clinically: ≈2–3 mmHg at ICP=10, ≈5 mmHg at ICP=20)
+function getPulseAmplitude(){
+  const base = Math.max(1.5, state.icpValue * 0.22);
+  const compF = (state.preset==='poor') ? 1.45 : 1.0;
+  return base * compF;
+}
+
+function getEffectiveICP(){
+  return Math.max(-5, state.icpValue);
+}
+
+function updateDamp(){
+  let target=1;
+  if(state.catheter==='partial') target=0.35;
+  if(state.catheter==='full'||state.catheter==='disconnected') target=0.03;
+  if(state.evdClosed) target=0;
+  dampFactor+=(target-dampFactor)*0.04;
+  return dampFactor;
+}
+
+// ═══════════════════════════════════════════════════════
+//  CANVAS / DRAWING
+// ═══════════════════════════════════════════════════════
+const canvas=document.getElementById('icpCanvas');
+const ctx=canvas.getContext('2d');
+// Disable anti-aliasing on shadow (we won't use shadow at all)
+ctx.imageSmoothingEnabled=false;
+
+// ── Y-axis ────────────────────────────────────────────
+function drawYAxis(){
+  // Black backing to cover any wave bleed into label zone
+  ctx.fillStyle='#000';
+  ctx.fillRect(0,0,LP,H);
+
+  const ticks=[0,state.scale*.25,state.scale*.5,state.scale*.75,state.scale];
+  ctx.font='12px "Share Tech Mono"';
+  ctx.textAlign='right';
+
+  for(const tick of ticks){
+    const y=mmhgToY(tick);
+    if(y<TP-1||y>H-BP+1)continue;
+    ctx.strokeStyle='rgba(107,114,128,0.5)';ctx.lineWidth=0;ctx.setLineDash([]);
+    ctx.beginPath();ctx.moveTo(LP-5,y);ctx.lineTo(LP,y);ctx.stroke();
+    ctx.fillStyle='rgba(180,190,200,0.70)';
+    ctx.fillText(Math.round(tick),LP-8,y+4);
+  }
+
+  // Scale label top-right
+  ctx.textAlign='right';
+  ctx.fillStyle='rgba(107,114,128,0.28)';
+  ctx.fillText(`0–${state.scale}`,W-RP-3,TP+12);
+}
+
+// ── Grid ──────────────────────────────────────────────
+function drawGridZone(x1,x2){
+  ctx.save();
+  const gPx=40;
+  // Verticals
+  ctx.lineWidth=1;ctx.setLineDash([]);
+  for(let gx=Math.ceil(x1/gPx)*gPx;gx<=x2;gx+=gPx){
+    if(gx<LP||gx>W-RP)continue;
+    ctx.strokeStyle='rgba(107,114,128,0.42)';
+    ctx.beginPath();ctx.moveTo(gx,TP);ctx.lineTo(gx,H-BP);ctx.stroke();
+  }
+  // Horizontals
+  const ticks=[0,state.scale*.25,state.scale*.5,state.scale*.75,state.scale];
+  for(const tick of ticks){
+    const gy=mmhgToY(tick);
+    if(gy<TP||gy>H-BP)continue;
+    const isMajor=(tick===0||tick===state.scale);
+    ctx.strokeStyle=isMajor?'rgba(107,114,128,0.42)':'rgba(107,114,128,0.42)';
+    ctx.setLineDash(isMajor?[]:[4,7]);ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(x1,gy);ctx.lineTo(x2,gy);ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+function drawFullBg(){
+  ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);
+  drawGridZone(LP,W-RP);
+  drawYAxis();
+  needsRedraw=false;
+}
+
+// ── Glow segment — NO ctx.shadow, multi-pass only ────
+// This prevents ALL purple ghost artifacts
+function glowSeg(x1,y1,x2,y2,r,g,b){
+  ctx.save();
+  const clipInset = 12;
+  ctx.beginPath();
+  ctx.rect(LP, TP + clipInset, UW, UH - clipInset * 2);
+  ctx.clip();
+
+  const passes = [
+    {lw:20,a:.025},
+    {lw:12,a:.07},
+    {lw:6, a:.18},
+    {lw:3, a:.50},
+    {lw:1.5,a:1.0},
+  ];
+
+  ctx.lineCap='round';
+  ctx.lineJoin='round';
+
+  for(const {lw,a} of passes){
+    ctx.strokeStyle=`rgba(${r},${g},${b},${a})`;
+    ctx.lineWidth=lw;
+    ctx.beginPath();
+    ctx.moveTo(x1,y1);
+    ctx.lineTo(x2,y2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// ── Peak label ────────────────────────────────────────
+function drawLabelAt(absX,y,lbl){
+  const lY=Math.max(TP+16,y-22);
+  ctx.save();
+  ctx.beginPath();ctx.rect(LP,TP,UW,UH);ctx.clip();
+  // dot
+  ctx.fillStyle=lbl.color;
+  ctx.beginPath();ctx.arc(absX,y,2.5,0,Math.PI*2);ctx.fill();
+  // tick
+  ctx.strokeStyle=lbl.color;ctx.lineWidth=.7;ctx.setLineDash([2,3]);
+  ctx.beginPath();ctx.moveTo(absX,y-4);ctx.lineTo(absX,lY-2);ctx.stroke();
+  ctx.setLineDash([]);
+  // text
+  ctx.font='500 11px "Rajdhani",monospace';ctx.textAlign='center';
+  ctx.fillStyle=lbl.color;ctx.fillText(lbl.text,absX,lY);
+  ctx.restore();
+}
+
+// ═══════════════════════════════════════════════════════
+//  DOM UPDATE
+// ═══════════════════════════════════════════════════════
+const icpDisp   = document.getElementById('icpDisplay');
+const ampDisp   = document.getElementById('ampDisplay');
+const alarmIcon = document.getElementById('alarmIcon');
+const legendEl  = document.getElementById('legend');
+const statusMsg = document.getElementById('statusMsg');
+const scaleLbl  = document.getElementById('scaleLabel');
+const sweepLbl  = document.getElementById('sweepLabel');
+const presetBdg = document.getElementById('presetBadge');
+
+function updateDOM(eICP,df){
+  const isDisconn=state.catheter==='disconnected';
+
+  // ICP value display
+  if(isDisconn){
+    icpDisp.innerHTML='---<span class="unit">mmHg</span>';
+    icpDisp.style.color='#4b5563';icpDisp.style.textShadow='none';
+    icpDisp.classList.remove('alarming');
+  } else if(zeroingPhase){
+    icpDisp.innerHTML='0<span class="unit">mmHg</span>';
+    icpDisp.style.color='#6b7280';icpDisp.style.textShadow='none';
+    icpDisp.classList.remove('alarming');
+  } else {
+    const v=Math.round(eICP*10)/10;
+    icpDisp.innerHTML=`${v}<span class="unit">mmHg</span>`;
+    const alm=eICP>state.alarmThreshold&&!state.alarmSilenced&&state.showAnnot;
+    if(state.showAnnot){
+      const c=eICP<=15?'#a855f7':eICP<=25?'#fbbf24':'#ef4444';
+      icpDisp.style.color=c;icpDisp.style.textShadow=`0 0 20px ${c}88`;
+    } else {
+      icpDisp.style.color='#a855f7';icpDisp.style.textShadow='0 0 20px rgba(168,85,247,.5)';
+    }
+    icpDisp.classList.toggle('alarming',!!alm);
+    alarmIcon.classList.toggle('on',!!alm);
+  }
+
+  // Pulse amplitude
+  const pa=getPulseAmplitude()*df;
+  ampDisp.textContent=(!isDisconn&&!zeroingPhase)?`Amp: ${Math.round(pa)} mmHg`:'';
+  ampDisp.style.display=(state.showAnnot&&!isDisconn&&!zeroingPhase)?'block':'none';
+
+  // Labels
+  legendEl.classList.toggle('on',state.showAnnot);
+  scaleLbl.textContent=`0–${state.scale} mmHg`;
+  sweepLbl.textContent=SWEEP_OPT[sweepIdx].label;
+  presetBdg.textContent=state.showAnnot?(PRESET_NAMES[state.preset]||''):'';
+
+  // Status message
+  let sm='',sv=false,sc='rgba(239,68,68,0.7)';
+  if(zeroingPhase){sm='ZEROING ICP…';sv=true;sc='rgba(168,85,247,0.7)';}
+  else if(zeroedFlash&&Date.now()-zeroedStart<2000){sm='ZEROED ✓';sv=true;sc='rgba(168,85,247,0.5)';}
+  else if(state.showAnnot&&!isDisconn){
+    if(eICP>state.alarmThreshold&&!state.alarmSilenced){sm=`⚠ ICP > ${state.alarmThreshold} mmHg`;sv=true;}
+    else if(state.catheter==='partial'){sm='DAMPED — PARTIAL OBSTRUCTION';sv=true;sc='rgba(251,191,36,0.7)';}
+    else if((state.evdClosed||state.catheter==='full')&&df<0.06){sm='NO PULSATILE WAVEFORM';sv=true;}
+  }
+  statusMsg.textContent=sm;statusMsg.style.color=sc;statusMsg.classList.toggle('on',sv);
+
+  // Sweep speed from controller
+  if(state.sweepSpeedIdx!==undefined&&state.sweepSpeedIdx!==sweepIdx){
+    sweepIdx=state.sweepSpeedIdx;
+    // Update sweep button UI
+    document.getElementById('sweepGroup').querySelectorAll('.obtn').forEach(b=>{
+      b.classList.toggle('act',parseInt(b.dataset.i)===sweepIdx);
+    });
+    needsRedraw=true;
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+//  MQTT
+// ═══════════════════════════════════════════════════════
+let mqttTopic='';
+const client=mqtt.connect('wss://broker.hivemq.com:8884/mqtt',{
+  clientId:'icp-disp-'+Math.random().toString(16).slice(2,8),
+  clean:true,reconnectPeriod:2000,
+});
+client.on('connect',()=>{if(mqttTopic)client.subscribe(mqttTopic);});
+client.on('message',(_,payload)=>{
+  try{
+    const msg=JSON.parse(payload.toString());
+    if(lastZeroTrig===null){lastZeroTrig=msg.zeroTrigger||0;}
+    else if((msg.zeroTrigger||0)>lastZeroTrig&&!zeroingPhase){
+      lastZeroTrig=msg.zeroTrigger;
+      zeroingPhase=true;zeroingStart=Date.now();
+    }
+    if(msg.scale&&msg.scale!==state.scale)needsRedraw=true;
+    Object.assign(state,msg);
+  }catch(e){}
+});
+function connectRoom(id){
+  const newT=TOPIC_BASE+id;
+  if(newT===mqttTopic)return;
+  if(mqttTopic&&client.connected)client.unsubscribe(mqttTopic);
+  mqttTopic=newT;
+  if(client.connected)client.subscribe(mqttTopic);
+}
+
+// ═══════════════════════════════════════════════════════
+//  SETTINGS OVERLAY
+// ═══════════════════════════════════════════════════════
+const sOverlay=document.getElementById('sOverlay');
+document.getElementById('settingsBtn').addEventListener('click',()=>sOverlay.classList.add('open'));
+document.getElementById('ovClose').addEventListener('click',()=>sOverlay.classList.remove('open'));
+document.getElementById('ovBg').addEventListener('click',()=>sOverlay.classList.remove('open'));
+
+document.getElementById('regenBtn').addEventListener('click',()=>{
+  const newId=genId();
+  setRoomId(newId);
+  connectRoom(newId);
+});
+
+// Sweep speed
+document.getElementById('sweepGroup').querySelectorAll('.obtn').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.getElementById('sweepGroup').querySelectorAll('.obtn').forEach(b=>b.classList.remove('act'));
+    btn.classList.add('act');
+    sweepIdx=parseInt(btn.dataset.i);
+    needsRedraw=true;
+  });
+});
+
+// Zero button in overlay
+const zeroBtnOv=document.getElementById('zeroBtnOv');
+zeroBtnOv.addEventListener('click',()=>{
+  if(zeroingPhase)return;
+  zeroingPhase=true;zeroingStart=Date.now();
+  zeroBtnOv.textContent='⊘  Zeroing…';zeroBtnOv.classList.add('processing');
+});
+
+// ═══════════════════════════════════════════════════════
+//  RESPONSIVE SCALING
+// ═══════════════════════════════════════════════════════
+const monWrap=document.getElementById('monitorWrap');
+
+function applyScale(){
+  const vw=window.innerWidth-16;
+  const sc=Math.min(1,vw/860);
+  monWrap.style.transform=`scale(${sc})`;
+  monWrap.style.transformOrigin='top left';
+  // Compensate body height so it centres properly
+  const naturalH=monWrap.offsetHeight;
+  monWrap.style.marginBottom=((sc-1)*naturalH)+'px';
+  monWrap.style.width='860px';
+  document.body.style.minHeight=(naturalH*sc+32)+'px';
+}
+window.addEventListener('resize',applyScale);
+
+// ═══════════════════════════════════════════════════════
+//  MAIN ANIMATION LOOP
+// ═══════════════════════════════════════════════════════
+function frame(ts){
+  // Cap dt to avoid huge jumps on first frame or after tab switch
+  if(lastFrameTs===null)lastFrameTs=ts;
+  const dt=Math.min((ts-lastFrameTs)/1000, 0.05);
+  lastFrameTs=ts;
+
+  // Zeroing phase: 4s cosmetic, then restore
+  if(zeroingPhase&&(Date.now()-zeroingStart)/1000>4){
+    zeroingPhase=false;zeroedFlash=true;zeroedStart=Date.now();
+    zeroBtnOv.textContent='⊘  Zero ICP';zeroBtnOv.classList.remove('processing');
+  }
+
+  // Scale change → full redraw
+  if(state.scale!==lastScale){lastScale=state.scale;needsRedraw=true;}
+ if(needsRedraw){
+  drawFullBg();
+  sweepX = 0;
+  bufOffset = 0;
+  prevY = null;
+  speedAccum = 0;
+  prevCursorX = null;
+}
+
+  const eICP=getEffectiveICP();
+  const df=updateDamp();
+  const isDisconn=state.catheter==='disconnected';
+
+  // Pixels this frame
+  const pps=SWEEP_OPT[sweepIdx].pps;
+  speedAccum+=pps*dt;
+  const steps=Math.floor(speedAccum);
+  speedAccum-=steps;
+
+  // Pulse amplitude in mmHg (for this frame)
+  const pulseAmp=getPulseAmplitude();
+
+  for(let i=0;i<steps;i++){
+    const absX=LP+sweepX;
+
+    // ── Erase zone ahead of cursor ──────────────────
+    const ahead=(sweepX+2)%UW;
+    const aAbsX=LP+ahead;
+    const aEnd=Math.min(aAbsX+ERASE_W,W-RP);
+    if(aEnd>aAbsX){
+      ctx.fillStyle='#000';ctx.fillRect(aAbsX,TP,aEnd-aAbsX,UH);
+      drawGridZone(aAbsX,aEnd);
+    }
+    // Wrap-around erase
+    if(ahead+ERASE_W>UW){
+      const wr=LP+((ahead+ERASE_W)%UW);
+      if(wr>LP+2){ctx.fillStyle='#000';ctx.fillRect(LP,TP,wr-LP,UH);drawGridZone(LP,wr);}
+    }
+
+    // ── Compute waveform Y ──────────────────────────
+    let y;
+    if(zeroingPhase){
+      // Zeroing: flat line at 0 mmHg
+      y=Math.max(TP+1,Math.min(H-BP-1,mmhgToY(0)));
+    } else if(isDisconn){
+      y=Math.max(TP+1,Math.min(H-BP-1,mmhgToY(0)));
+    } else {
+      // wAmp in real mmHg: normalise cycle value (0–14) to real pulse pressure
+      const rawSample=sampleWave(bufOffset);
+      const wAmp=(rawSample/MAX_CYCLE_VAL)*pulseAmp*df;
+      // Respiratory modulation: suppressed when EVD closed or flat
+      const respActive=state.respMod&&!state.evdClosed&&df>0.1;
+      const rAmp=respActive?1.2*Math.sin(2*Math.PI*bufOffset/RESP_PX):0;
+      const totalICP=eICP+wAmp+rAmp;
+      y=Math.max(TP+1,Math.min(H-BP-1,mmhgToY(totalICP)));
+    }
+
+    // ── Draw segment ────────────────────────────────
+    const flat=df<0.06;
+    const goRed=state.showAnnot&&flat&&!isDisconn&&!zeroingPhase;
+    const [r,g,b]=isDisconn?[107,114,128]:
+                  zeroingPhase?[148,103,234]:
+                  goRed?[255,68,68]:[168,85,247];
+
+    if(prevY!==null&&sweepX>0){
+      glowSeg(absX-1,prevY,absX,y,r,g,b);
+    }
+
+    // ── Peak labels ────────────────────────────────
+    if(state.showAnnot&&!isDisconn&&!zeroingPhase&&df>0.15){
+      const frac=(bufOffset%CYCLE_PX)/CYCLE_PX;
+      for(const lbl of PEAK_LABELS){
+        if(Math.abs(frac-lbl.t)<1.5/CYCLE_PX)drawLabelAt(absX,y,lbl);
+      }
+    }
+
+    // ── Obstruction/zeroing annotations ────────────
+    if(state.showAnnot&&!zeroingPhase&&df<0.06&&!isDisconn&&sweepX===Math.floor(UW/2)){
+      const msg=state.evdClosed?'EVD VALVE CLOSED — NO PULSATILE WAVEFORM':
+                state.catheter==='full'?'CATHETER FULLY OBSTRUCTED':'';
+      if(msg){
+        ctx.save();ctx.font='700 11px "Rajdhani",monospace';ctx.textAlign='center';
+        ctx.fillStyle='rgba(239,68,68,0.5)';
+        ctx.fillText(msg,LP+UW/2,mmhgToY(eICP)-18);ctx.restore();
+      }
+    }
+    if(isDisconn&&state.showAnnot&&sweepX===Math.floor(UW/2)){
+      ctx.save();ctx.font='700 11px "Rajdhani",monospace';ctx.textAlign='center';
+      ctx.fillStyle='rgba(107,114,128,0.45)';
+      ctx.fillText('NO SIGNAL — TRANSDUCER DISCONNECTED',LP+UW/2,mmhgToY(0)-18);ctx.restore();
+    }
+    if(zeroingPhase&&sweepX===Math.floor(UW/2)){
+      ctx.save();ctx.font='700 11px "Rajdhani",monospace';ctx.textAlign='center';
+      ctx.fillStyle='rgba(148,103,234,0.55)';
+      ctx.fillText('ZEROING TRANSDUCER — REFERENCING TO ATMOSPHERE',LP+UW/2,mmhgToY(0)-18);ctx.restore();
+    }
+
+    prevY=y;
+    bufOffset++;
+    sweepX++;
+    if(sweepX >= UW){
+  sweepX = 0;
+  prevY = null;
+  prevCursorX = null;
+}
+  }
+
+  // ── Cursor scan line (moves with sweep) ──────────
+if (steps > 0) {
+  const cx = LP + sweepX;
+
+  // erase previous cursor
+  if (prevCursorX !== null) {
+    const eraseX = Math.max(LP, prevCursorX - 2);
+    const eraseW = Math.min(5, W - RP - eraseX);
+
+    ctx.fillStyle = '#000';
+    ctx.fillRect(eraseX, TP, eraseW, UH);
+    drawGridZone(eraseX, eraseX + eraseW);
+  }
+
+  // draw new cursor
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(LP, TP, UW, UH);
+  ctx.clip();
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(cx, TP);
+  ctx.lineTo(cx, H - BP);
+  ctx.stroke();
+  ctx.restore();
+
+  prevCursorX = cx;
+}
+
+  // Redraw Y-axis on top to keep it clean
+  drawYAxis();
+
+  // DOM at ~12 fps
+  const now=Date.now();
+  if(now-lastDOMUpd>80){updateDOM(eICP,df);lastDOMUpd=now;}
+
+  requestAnimationFrame(frame);
+}
+
+// ═══════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════
+roomId=loadRoomId();
+setRoomId(roomId);
+connectRoom(roomId);
+applyScale();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

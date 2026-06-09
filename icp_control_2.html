@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ICP Controller</title>
+<script src="https://unpkg.com/mqtt@4.3.7/dist/mqtt.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+  :root{
+    --bg:#0b0f1a;
+    --s1:#161c2d;
+    --s2:#1d2438;
+    --bd:#2a3252;
+    --bd2:#3d4d7a;
+    --txt:#e2e8f0;
+    --txt2:#94a3b8;
+    --txt3:#64748b;
+    --txt4:#475569;
+    --pu:#a855f7;
+    --pu2:#7c3aed;
+    --pub:#1e1040;
+    --pubd:#6d28d9;
+    --wa:#f59e0b;
+    --wab:#1c1500;
+    --wabd:#b45309;
+    --da:#f87171;
+    --dab:#1a0808;
+    --dabd:#b91c1c;
+  }
+
+  body{
+    background:var(--bg);min-height:100vh;
+    font-family:'Inter',sans-serif;color:var(--txt);
+    padding:12px;display:flex;flex-direction:column;align-items:center;
+  }
+
+  .panel{width:100%;max-width:430px;display:flex;flex-direction:column;gap:8px;padding-bottom:20px}
+
+  /* Header */
+  .hdr{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:12px 16px;background:var(--s1);border:1px solid var(--bd);border-radius:8px;
+  }
+  .hdr-left{display:flex;flex-direction:column;gap:3px}
+  .hdr-title{font-size:10px;font-weight:600;letter-spacing:4px;color:var(--txt4);text-transform:uppercase}
+  .hdr-room{font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:500;color:var(--pu)}
+  .conn{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--txt4);letter-spacing:1px}
+  .cdot{width:7px;height:7px;border-radius:50%;background:var(--bd2);transition:all .3s}
+  .cdot.live{background:var(--pu);box-shadow:0 0 7px var(--pu);animation:cp 2s ease-in-out infinite}
+  .cdot.err{background:var(--da);box-shadow:0 0 7px var(--da)}
+  @keyframes cp{0%,100%{opacity:1}50%{opacity:.4}}
+
+  /* Room ID Entry */
+  .room-card{
+    background:var(--s1);border:1px solid var(--bd);border-radius:8px;padding:14px 16px;
+    display:flex;flex-direction:column;gap:10px;
+  }
+  .room-label{font-size:9px;font-weight:600;letter-spacing:3px;color:var(--txt4);text-transform:uppercase}
+  .room-row{display:flex;gap:8px;align-items:center}
+  .room-input{
+    flex:1;padding:10px 12px;
+    font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:500;
+    background:var(--bg);border:1px solid var(--bd2);border-radius:6px;
+    color:var(--pu);text-align:center;outline:none;letter-spacing:4px;
+    text-transform:uppercase;
+  }
+  .room-input:focus{border-color:var(--pu);box-shadow:0 0 0 2px rgba(168,85,247,.15)}
+  .room-apply{
+    padding:10px 16px;font-family:'Inter',sans-serif;font-size:12px;font-weight:500;
+    background:var(--bg);border:1px solid var(--bd2);border-radius:6px;
+    color:var(--txt2);cursor:pointer;transition:all .2s;letter-spacing:.5px;white-space:nowrap;
+  }
+  .room-apply:hover{border-color:var(--pu);color:var(--pu)}
+  .room-apply.live{background:var(--pub);border-color:var(--pubd);color:var(--pu)}
+  .room-status{font-size:10px;color:var(--txt4);letter-spacing:1px;text-align:center}
+
+  /* Card */
+  .card{background:var(--s1);border:1px solid var(--bd);border-radius:8px;overflow:visible}
+  .card-hdr{padding:10px 14px 0;display:flex;align-items:center;justify-content:space-between}
+  .card-title{font-size:9px;font-weight:600;letter-spacing:3px;color:var(--txt4);text-transform:uppercase}
+  .card-body{padding:10px 14px 14px;display:flex;flex-direction:column;gap:10px}
+
+  /* ICP big */
+  .icp-big{
+    font-family:'JetBrains Mono',monospace;font-size:50px;font-weight:500;
+    color:var(--pu);text-shadow:0 0 20px rgba(168,85,247,.35);
+    line-height:1;display:flex;align-items:baseline;gap:8px;
+  }
+  .icp-big sub{font-size:14px;color:#4c1d95;font-weight:400;vertical-align:baseline}
+
+  /* Sliders */
+  .slider-row{display:flex;align-items:center;gap:12px}
+  input[type=range]{
+    -webkit-appearance:none;flex:1;height:3px;border-radius:2px;outline:none;cursor:pointer;
+    background:linear-gradient(90deg,var(--pu) var(--p,30%),#1e3a5f var(--p,30%));
+  }
+  input[type=range].warn{background:linear-gradient(90deg,var(--wa) var(--p,50%),#1c1500 var(--p,50%))}
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:18px;height:18px;border-radius:50%;
+    background:var(--pu);box-shadow:0 0 8px var(--pu);cursor:pointer;border:2px solid var(--bg);
+  }
+  input[type=range].warn::-webkit-slider-thumb{background:var(--wa);box-shadow:0 0 8px var(--wa)}
+  .sval{font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:500;color:var(--pu);min-width:58px;text-align:right;white-space:nowrap}
+  .sval.warn{color:var(--wa)}
+  .sbounds{display:flex;justify-content:space-between;font-size:10px;color:var(--txt4);margin-top:-2px}
+
+  /* Scale */
+  .scale-row{display:flex;align-items:center;gap:10px}
+  .scale-val{flex:1;text-align:center;font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:500;color:var(--pu)}
+  .scale-btn{
+    width:38px;height:38px;display:flex;align-items:center;justify-content:center;
+    background:var(--bg);border:1px solid var(--bd2);border-radius:6px;
+    font-size:17px;color:var(--txt3);cursor:pointer;transition:all .2s;flex-shrink:0;
+  }
+  .scale-btn:hover:not(:disabled){border-color:var(--pu);color:var(--pu)}
+  .scale-btn:disabled{opacity:.25;cursor:default}
+
+  /* Button grids */
+  .bg{display:grid;gap:5px}
+  .g2{grid-template-columns:1fr 1fr}
+  .g3{grid-template-columns:1fr 1fr 1fr}
+  .g4{grid-template-columns:1fr 1fr 1fr 1fr}
+  .g5{grid-template-columns:1fr 1fr 1fr 1fr 1fr}
+
+  .gbtn{
+    padding:9px 4px;font-family:'Inter',sans-serif;font-size:11px;font-weight:500;
+    background:var(--bg);border:1px solid var(--bd);border-radius:6px;
+    color:var(--txt4);cursor:pointer;transition:all .18s;text-align:center;line-height:1.35;
+  }
+  .gbtn:hover{border-color:var(--bd2);color:var(--txt2)}
+  .gbtn .s{font-size:9px;display:block;opacity:.5;font-weight:400;margin-top:1px}
+  .gbtn.act{background:var(--pub);border-color:var(--pubd);color:#c084fc}
+  .gbtn.act-warn{background:var(--wab);border-color:var(--wabd);color:var(--wa)}
+  .gbtn.act-danger{background:var(--dab);border-color:var(--dabd);color:var(--da)}
+
+  /* Toggle */
+  .toggle-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .tinfo{display:flex;flex-direction:column;gap:3px}
+  .tname{font-size:13px;font-weight:500;color:var(--txt2)}
+  .tsub{font-size:10px;color:var(--txt4);transition:color .3s}
+  .tsub.on{color:var(--pu2)}
+  .toggle{position:relative;width:46px;height:24px;cursor:pointer;flex-shrink:0}
+  .toggle input{display:none}
+  .ttrack{position:absolute;inset:0;background:var(--bg);border:1px solid var(--bd2);border-radius:12px;transition:all .3s}
+  .toggle input:checked~.ttrack{background:var(--pub);border-color:var(--pu)}
+  .tknob{position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:var(--bd2);transition:all .3s}
+  .toggle input:checked~.tknob{transform:translateX(22px);background:var(--pu);box-shadow:0 0 7px var(--pu)}
+
+  /* Zero */
+  .zero-btn{
+    width:100%;padding:11px;font-family:'Inter',sans-serif;font-size:12px;font-weight:500;
+    letter-spacing:2px;background:var(--bg);border:1px solid var(--bd2);border-radius:6px;
+    color:var(--txt3);cursor:pointer;transition:all .2s;text-transform:uppercase;
+  }
+  .zero-btn:hover{border-color:var(--pu);color:var(--pu);box-shadow:0 0 12px rgba(168,85,247,.12)}
+  .zero-btn.processing{opacity:.35;pointer-events:none}
+
+  /* Alarm */
+  .alarm-row{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+  .alarm-btn{
+    padding:9px;font-size:11px;font-weight:500;
+    background:var(--bg);border:1px solid var(--bd);border-radius:6px;
+    color:var(--txt4);cursor:pointer;transition:all .2s;text-align:center;
+  }
+  .alarm-btn:hover{border-color:var(--dabd);color:var(--da)}
+  .alarm-btn.silenced{border-color:var(--wabd);color:var(--wa);background:var(--wab)}
+
+  hr{border:none;border-top:1px solid #1a2035;margin:2px 0}
+  .ssub{font-size:9px;font-weight:600;letter-spacing:2px;color:var(--bd2);text-transform:uppercase;padding:4px 0 2px}
+
+  /* Footer */
+  .ftr{
+    display:flex;justify-content:space-between;padding:9px 14px;
+    background:var(--s1);border:1px solid var(--bd);border-radius:6px;
+    font-size:9px;letter-spacing:2px;color:#1e293b;font-family:'JetBrains Mono',monospace;
+  }
+  .ls{transition:color .3s}
+  .ls.fl{color:var(--pu)}
+
+  /* Credit */
+  .credit{
+    text-align:center;font-size:11px;color:var(--txt4);
+    line-height:1.5;padding:6px 4px 2px;
+  }
+  .credit b{color:var(--pu);font-weight:600}
+</style>
+</head>
+<body>
+<div class="panel">
+
+  <!-- Header -->
+  <div class="hdr">
+    <div class="hdr-left">
+      <div class="hdr-title">ICP Remote Controller</div>
+      <div class="hdr-room" id="hdrRoom">Not connected</div>
+    </div>
+    <div class="conn">
+      <div class="cdot" id="cdot"></div>
+      <span id="clabel">Connecting</span>
+    </div>
+  </div>
+
+  <!-- Room ID Entry -->
+  <div class="room-card">
+    <div class="room-label">Room ID — enter the code shown on the display page</div>
+    <div class="room-row">
+      <input class="room-input" id="roomInput" type="text" maxlength="6" placeholder="XXXXXX" autocomplete="off" autocapitalize="characters" spellcheck="false">
+      <button class="room-apply" id="roomApply">Connect</button>
+    </div>
+    <div class="room-status" id="roomStatus">Enter the 6-character ID shown on the display screen</div>
+  </div>
+
+  <!-- ICP Value -->
+  <div class="card">
+    <div class="card-hdr"><div class="card-title">Intracranial Pressure</div></div>
+    <div class="card-body">
+      <div class="icp-big" id="icpBig">12 <sub>mmHg</sub></div>
+      <div class="slider-row">
+        <input type="range" id="icpSlider" min="0" max="50" value="12">
+      </div>
+      <div class="sbounds"><span>0 mmHg</span><span>Normal ≤ 15</span><span>50 mmHg</span></div>
+    </div>
+  </div>
+
+  <!-- Scale + Speed -->
+  <div class="card">
+    <div class="card-hdr"><div class="card-title">Scale &amp; Speed</div></div>
+    <div class="card-body">
+      <div class="ssub">Y-Axis Scale</div>
+      <div class="scale-row">
+        <button class="scale-btn" id="scaleDown">▼</button>
+        <div class="scale-val" id="scaleVal">0 – 20 mmHg</div>
+        <button class="scale-btn" id="scaleUp">▲</button>
+      </div>
+      <hr>
+      <div class="ssub">Sweep Speed</div>
+      <div class="bg g4" id="sweepGroup">
+        <button class="gbtn" data-v="0">6.25<span class="s">mm/s</span></button>
+        <button class="gbtn" data-v="1">12.5<span class="s">mm/s</span></button>
+        <button class="gbtn act" data-v="2">25<span class="s">mm/s</span></button>
+        <button class="gbtn" data-v="3">50<span class="s">mm/s</span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Zero ICP -->
+  <div class="card">
+    <div class="card-hdr"><div class="card-title">Transducer Zeroing</div></div>
+    <div class="card-body">
+      <button class="zero-btn" id="zeroBtn">⊘  Zero ICP</button>
+    </div>
+  </div>
+
+  <!-- Waveform Preset -->
+  <div class="card">
+    <div class="card-hdr"><div class="card-title">Waveform Preset</div></div>
+    <div class="card-body">
+      <div class="bg g2" id="presetGroup">
+        <button class="gbtn act" data-v="normal">Normal<span class="s">P1 &gt; P2 &gt; P3</span></button>
+        <button class="gbtn" data-v="poor">Poor Compliance<span class="s">P2 ≥ P1</span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Line Status -->
+  <div class="card">
+    <div class="card-hdr"><div class="card-title">Line Status</div></div>
+    <div class="card-body">
+      <div class="toggle-row">
+        <div class="tinfo">
+          <div class="tname">EVD Valve</div>
+          <div class="tsub" id="evdSub">Open — pulsatile waveform</div>
+        </div>
+        <label class="toggle"><input type="checkbox" id="evdToggle"><div class="ttrack"></div><div class="tknob"></div></label>
+      </div>
+      <hr>
+      <div class="ssub">Catheter Status</div>
+      <div class="bg g4" id="cathGroup">
+        <button class="gbtn act" data-v="normal">Normal</button>
+        <button class="gbtn" data-v="partial">Partial<span class="s">Damped</span></button>
+        <button class="gbtn" data-v="full">Full<span class="s">Occluded</span></button>
+        <button class="gbtn" data-v="disconnected">Disconn.<span class="s">No signal</span></button>
+      </div>
+      <hr>
+      <div class="toggle-row">
+        <div class="tinfo">
+          <div class="tname">Respiratory Modulation</div>
+          <div class="tsub" id="respSub">Off</div>
+        </div>
+        <label class="toggle"><input type="checkbox" id="respToggle"><div class="ttrack"></div><div class="tknob"></div></label>
+      </div>
+    </div>
+  </div>
+
+  <!-- Alarms -->
+  <div class="card">
+    <div class="card-hdr"><div class="card-title">ICP Alarm Threshold</div></div>
+    <div class="card-body">
+      <div class="slider-row">
+        <input type="range" class="warn" id="alarmSlider" min="10" max="50" step="5" value="20">
+        <div class="sval warn" id="alarmVal">20 mmHg</div>
+      </div>
+      <div class="sbounds"><span>10 mmHg</span><span>Alarm Threshold</span><span>50 mmHg</span></div>
+      <div class="alarm-row">
+        <button class="alarm-btn" id="silenceBtn">⏸ Silence</button>
+        <button class="alarm-btn" id="resetAlBtn">↺ Re-enable</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Display -->
+  <div class="card">
+    <div class="card-hdr"><div class="card-title">Display Mode</div></div>
+    <div class="card-body">
+      <div class="toggle-row">
+        <div class="tinfo">
+          <div class="tname">Annotations &amp; Labels</div>
+          <div class="tsub" id="annotSub">Off — clean monitor view</div>
+        </div>
+        <label class="toggle"><input type="checkbox" id="annotToggle"><div class="ttrack"></div><div class="tknob"></div></label>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="ftr">
+    <span>SESSION · icpm-X9</span>
+    <span class="ls" id="lsent">—</span>
+  </div>
+
+  <!-- Credit -->
+  <div class="credit">
+    Created by <b>Ahmed Al Khalifah</b><br>Neurocritical Care Fellow · SickKids
+  </div>
+
+</div>
+
+<script>
+const TOPIC_BASE='icpm-X9-';
+const SCALES=[10,15,20,25,30,35,40,45,50];
+let scaleIdx=2; // 20 mmHg
+
+let currentTopic='';
+let roomId='';
+
+let state={
+  icpValue:12,scale:20,zeroTrigger:0,
+  preset:'normal',
+  evdClosed:false,catheter:'normal',
+  respMod:false,
+  alarmThreshold:20,alarmSilenced:false,
+  showAnnot:false,
+  sweepSpeedIdx:2,
+};
+
+// DOM
+const cdot       =document.getElementById('cdot');
+const clabel     =document.getElementById('clabel');
+const hdrRoom    =document.getElementById('hdrRoom');
+const roomInput  =document.getElementById('roomInput');
+const roomApply  =document.getElementById('roomApply');
+const roomStatus =document.getElementById('roomStatus');
+const icpBig     =document.getElementById('icpBig');
+const icpSlider  =document.getElementById('icpSlider');
+const scaleVal   =document.getElementById('scaleVal');
+const scaleDown  =document.getElementById('scaleDown');
+const scaleUp    =document.getElementById('scaleUp');
+const zeroBtn    =document.getElementById('zeroBtn');
+const evdToggle  =document.getElementById('evdToggle');
+const evdSub     =document.getElementById('evdSub');
+const respToggle =document.getElementById('respToggle');
+const respSub    =document.getElementById('respSub');
+const annotToggle=document.getElementById('annotToggle');
+const annotSub   =document.getElementById('annotSub');
+const alarmSlider=document.getElementById('alarmSlider');
+const alarmVal   =document.getElementById('alarmVal');
+const silenceBtn =document.getElementById('silenceBtn');
+const resetAlBtn =document.getElementById('resetAlBtn');
+const lsent      =document.getElementById('lsent');
+
+// MQTT
+const client=mqtt.connect('wss://broker.hivemq.com:8884/mqtt',{
+  clientId:'icp-ctrl-'+Math.random().toString(16).slice(2,8),
+  clean:true,reconnectPeriod:2000,
+});
+client.on('connect',()=>{
+  cdot.className='cdot live';clabel.textContent='Live';
+  if(currentTopic)publish();
+});
+client.on('error',()=>{cdot.className='cdot err';clabel.textContent='Error';});
+client.on('reconnect',()=>{cdot.className='cdot';clabel.textContent='Reconnecting';});
+
+function publish(){
+  if(!client.connected||!currentTopic)return;
+  client.publish(currentTopic,JSON.stringify(state),{retain:true});
+  lsent.textContent=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  lsent.classList.add('fl');setTimeout(()=>lsent.classList.remove('fl'),500);
+}
+
+// Room connection
+function connectRoom(id){
+  const clean=id.toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,6);
+  if(clean.length!==6){
+    roomStatus.textContent='⚠ Please enter the full 6-character ID';
+    roomStatus.style.color='rgba(239,68,68,0.7)';
+    return;
+  }
+  const newT=TOPIC_BASE+clean;
+  if(newT!==currentTopic){
+    if(currentTopic&&client.connected)client.unsubscribe(currentTopic);
+    currentTopic=newT;
+    if(client.connected)client.subscribe(currentTopic);
+  }
+  roomId=clean;
+  localStorage.setItem('icpCtrlRoom',clean);
+  hdrRoom.textContent=`Room ID: ${clean}`;
+  roomApply.textContent='Connected ✓';
+  roomApply.classList.add('live');
+  roomStatus.textContent=`Connected — controlling display: ${clean}`;
+  roomStatus.style.color='rgba(168,85,247,0.6)';
+  publish();
+}
+
+// Load saved room ID
+const saved=localStorage.getItem('icpCtrlRoom')||'';
+if(saved.length===6){
+  roomInput.value=saved;
+  connectRoom(saved);
+}
+
+roomApply.addEventListener('click',()=>connectRoom(roomInput.value));
+roomInput.addEventListener('keydown',e=>{if(e.key==='Enter')connectRoom(roomInput.value);});
+roomInput.addEventListener('input',()=>{
+  roomApply.textContent='Connect';
+  roomApply.classList.remove('live');
+});
+
+// Track helper
+function setTrack(el){
+  const p=((el.value-el.min)/(el.max-el.min))*100;
+  el.style.setProperty('--p',p+'%');
+}
+
+// ICP Slider
+setTrack(icpSlider);
+icpSlider.addEventListener('input',()=>{
+  state.icpValue=parseInt(icpSlider.value);
+  icpBig.innerHTML=`${state.icpValue} <sub>mmHg</sub>`;
+  setTrack(icpSlider);publish();
+});
+
+// Scale
+function refreshScale(){
+  state.scale=SCALES[scaleIdx];
+  scaleVal.textContent=`0 – ${state.scale} mmHg`;
+  scaleDown.disabled=scaleIdx===0;scaleUp.disabled=scaleIdx===SCALES.length-1;
+}
+refreshScale();
+scaleDown.addEventListener('click',()=>{if(scaleIdx>0){scaleIdx--;refreshScale();publish();}});
+scaleUp.addEventListener('click',()=>{if(scaleIdx<SCALES.length-1){scaleIdx++;refreshScale();publish();}});
+
+// Zero
+zeroBtn.addEventListener('click',()=>{
+  state.zeroTrigger++;
+  zeroBtn.textContent='⊘  Zeroing…';zeroBtn.classList.add('processing');
+  setTimeout(()=>{zeroBtn.textContent='⊘  Zero ICP';zeroBtn.classList.remove('processing');},3800);
+  publish();
+});
+
+// Generic button group
+function setupGroup(id,stateKey,colorFn,isNum){
+  document.getElementById(id).querySelectorAll('.gbtn').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      document.getElementById(id).querySelectorAll('.gbtn').forEach(b=>b.className='gbtn');
+      const cls=colorFn?colorFn(btn.dataset.v):'act';
+      btn.classList.add(cls);
+      state[stateKey]=isNum?Number(btn.dataset.v):btn.dataset.v;
+      publish();
+    });
+  });
+}
+
+setupGroup('presetGroup','preset',v=>v==='poor'?'act-warn':'act');
+setupGroup('cathGroup','catheter',v=>(v==='full'||v==='disconnected')?'act-danger':v==='partial'?'act-warn':'act');
+
+// Sweep speed
+document.getElementById('sweepGroup').querySelectorAll('.gbtn').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.getElementById('sweepGroup').querySelectorAll('.gbtn').forEach(b=>b.className='gbtn');
+    btn.classList.add('act');
+    state.sweepSpeedIdx=parseInt(btn.dataset.v);
+    publish();
+  });
+});
+
+// EVD
+evdToggle.addEventListener('change',()=>{
+  state.evdClosed=evdToggle.checked;
+  evdSub.textContent=state.evdClosed?'Closed — flat waveform':'Open — pulsatile waveform';
+  evdSub.className='tsub'+(state.evdClosed?' on':'');
+  publish();
+});
+
+// Resp
+respToggle.addEventListener('change',()=>{
+  state.respMod=respToggle.checked;
+  respSub.textContent=state.respMod?'On — respiratory oscillation visible':'Off';
+  respSub.className='tsub'+(state.respMod?' on':'');
+  publish();
+});
+
+// Annotations
+annotToggle.addEventListener('change',()=>{
+  state.showAnnot=annotToggle.checked;
+  annotSub.textContent=state.showAnnot?'On — labels, colors, alarms':'Off — clean monitor view';
+  annotSub.className='tsub'+(state.showAnnot?' on':'');
+  publish();
+});
+
+// Alarm
+setTrack(alarmSlider);
+alarmSlider.addEventListener('input',()=>{
+  state.alarmThreshold=parseInt(alarmSlider.value);
+  alarmVal.textContent=`${state.alarmThreshold} mmHg`;
+  setTrack(alarmSlider);publish();
+});
+silenceBtn.addEventListener('click',()=>{
+  state.alarmSilenced=true;
+  silenceBtn.classList.add('silenced');silenceBtn.textContent='🔕 Silenced';publish();
+});
+resetAlBtn.addEventListener('click',()=>{
+  state.alarmSilenced=false;
+  silenceBtn.classList.remove('silenced');silenceBtn.textContent='⏸ Silence';publish();
+});
+</script>
+</body>
+</html>
